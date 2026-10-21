@@ -11,8 +11,8 @@
 
 | Nombre | Matrícula | Rol | GitHub |
 |--------|-----------|-----|--------|
-| Oscar Sandoval Cabrera | L00000000 | 🔧 Firmware ESP32 · 🧠 Servidor Python/IA · ☁️ Firebase/Interfaz | @Sand027 |
-| Diego Josué Talamantes Santiago | L00000000 | 🔩 Hardware/Carcasa · 📝 Documentación | @usuario |
+| Oscar Sandoval Cabrera | 23240457 | 🔧 Firmware ESP32 · 🧠 Servidor Python/IA · ☁️ Firebase/Interfaz | @Sand027 |
+| Diego Josué Talamantes Santiago | 23240355 | 🔩 Hardware/Carcasa · 📝 Documentación | @usuario |
 
 ---
 

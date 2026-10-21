@@ -2,8 +2,8 @@
 # Proyecto:  BikeSafe — Candado inteligente portátil
 # Archivo:   main.py
 # Objetivo:  Conecta la ESP32 a WiFi/MQTT, publica 3 sensores y atiende 3 actuadores
-# Equipo:    Oscar Sandoval Cabrera (L00000000),
-#            Diego Josué Talamantes Santiago (L00000000)
+# Equipo:    Oscar Sandoval Cabrera (23240457),
+#            Diego Josué Talamantes Santiago (23240355)
 # Materia:   Sistemas Programables — ISC TecNM León
 # Semestre:  ago-dic-2026
 # ============================================

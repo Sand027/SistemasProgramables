@@ -2,8 +2,8 @@
 # Proyecto:  BikeSafe — Candado inteligente portátil
 # Archivo:   hal/actuadores.py
 # Objetivo:  Control de los 3 actuadores del candado (capa HAL)
-# Equipo:    Oscar Sandoval Cabrera (L00000000),
-#            Diego Josué Talamantes Santiago (L00000000)
+# Equipo:    Oscar Sandoval Cabrera (23240457),
+#            Diego Josué Talamantes Santiago (23240355)
 # Materia:   Sistemas Programables — ISC TecNM León
 # Semestre:  ago-dic-2026
 # ============================================

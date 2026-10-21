@@ -2,8 +2,8 @@
 # Proyecto:  BikeSafe — Candado inteligente portátil
 # Archivo:   mqtt_bridge.py
 # Objetivo:  Se suscribe a los tópicos de BikeSafe y muestra los datos en consola
-# Equipo:    Oscar Sandoval Cabrera (L00000000),
-#            Diego Josué Talamantes Santiago (L00000000)
+# Equipo:    Oscar Sandoval Cabrera (23240457),
+#            Diego Josué Talamantes Santiago (23240355)
 # Materia:   Sistemas Programables — ISC TecNM León
 # Semestre:  ago-dic-2026
 # ============================================
