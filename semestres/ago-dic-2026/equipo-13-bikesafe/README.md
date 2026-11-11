@@ -231,6 +231,10 @@ proyectos/bikesafe/
       ultima_confianza: 0.89
 ```
 
+Dashboard conectado a Firestore (proyecto `bikesafe-equipo13`) con datos de prueba de `servidor/probar_firebase.py`:
+
+![Dashboard en vivo](media/dashboard-firestore-prueba.png)
+
 Si no está `servidor/serviceAccountKey.json`, el servidor guarda lo mismo en `servidor/registros/*.jsonl` (no se sube a GitHub).
 
 ---
@@ -252,7 +256,7 @@ Si no está `servidor/serviceAccountKey.json`, el servidor guarda lo mismo en `s
 |--------|-----------|--------|
 | 1 · HAL + MQTT | 4 sensores y 3 actuadores funcionando, tópicos MQTT, Tabla HAL | ✅ En protoboard (falta montar el RC522, en camino) |
 | 2 · CAM + IA | Cámara publica frames, servidor con OpenCV decide y activa actuador | ✅ Código listo y probado con fotos reales de la cámara |
-| 3 · Firebase + carcasa | Histórico en Firestore, dashboard, carcasa cerrada | 🟡 Código listo · falta crear el proyecto de Firebase y la carcasa |
+| 3 · Firebase + carcasa | Histórico en Firestore, dashboard, carcasa cerrada | 🟡 Firebase y dashboard funcionando · falta la carcasa |
 | 4 · Final | Video, reporte PDF, fotos con carcasa | ⬜ Pendiente |
 
 ---

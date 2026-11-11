@@ -60,8 +60,12 @@ class DetectorPersonas:
         self.giros = GIROS if probar_giros else {0: None}
         self._caras = cv2.FaceDetectorYN.create(
             MODELO_CARAS, "", (320, 240), 0.5, 0.3, 50)
-        self._hog = cv2.HOGDescriptor()
-        self._hog.setSVMDetector(cv2.HOGDescriptor_getDefaultPeopleDetector())
+        # HOG viene en OpenCV 4; en OpenCV 5 solo con opencv-contrib-python.
+        # Si no esta, la IA sigue funcionando solo con YuNet (caras).
+        self._hog = None
+        if hasattr(cv2, "HOGDescriptor"):
+            self._hog = cv2.HOGDescriptor()
+            self._hog.setSVMDetector(cv2.HOGDescriptor_getDefaultPeopleDetector())
 
     # ---------- modelos ----------
     def _buscar_caras(self, img):
@@ -74,6 +78,8 @@ class DetectorPersonas:
         return float(max(c[-1] for c in caras)), cajas
 
     def _buscar_cuerpos(self, img):
+        if self._hog is None:
+            return 0.0, []
         # HOG necesita que la persona mida al menos 128 px de alto
         escala = 480 / max(img.shape[:2])
         chica = cv2.resize(img, None, fx=escala, fy=escala)

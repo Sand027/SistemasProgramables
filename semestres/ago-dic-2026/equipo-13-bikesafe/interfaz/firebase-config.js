@@ -14,10 +14,10 @@
 // navegador); lo que protege la base son las reglas de firestore.rules.
 
 export const firebaseConfig = {
-  apiKey: "PEGA_AQUI",
-  authDomain: "PEGA_AQUI.firebaseapp.com",
-  projectId: "PEGA_AQUI",
-  storageBucket: "PEGA_AQUI.appspot.com",
-  messagingSenderId: "PEGA_AQUI",
-  appId: "PEGA_AQUI",
+  apiKey: "AIzaSyC13nYA2WOaK5vgJZWKNdNLx9aq-fo1Q3s",
+  authDomain: "bikesafe-equipo13.firebaseapp.com",
+  projectId: "bikesafe-equipo13",
+  storageBucket: "bikesafe-equipo13.firebasestorage.app",
+  messagingSenderId: "274871777413",
+  appId: "1:274871777413:web:35a4d728d64e3c6cb0d1ec",
 };
