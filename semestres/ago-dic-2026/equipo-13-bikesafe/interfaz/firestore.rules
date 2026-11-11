@@ -1,0 +1,25 @@
+// ============================================
+// Proyecto:  BikeSafe - Candado inteligente portatil
+// Archivo:   interfaz/firestore.rules
+// Objetivo:  Reglas de seguridad de Cloud Firestore
+// Equipo:    Oscar Sandoval Cabrera (23240457),
+//            Diego Josue Talamantes Santiago (23240355)
+// Materia:   Sistemas Programables - ISC TecNM Leon
+// Semestre:  ago-dic-2026
+// ============================================
+//
+// - El dashboard (navegador) solo puede LEER.
+// - Solo el servidor Python escribe, con su llave de cuenta de servicio
+//   (firebase-admin se salta estas reglas). Asi nadie puede borrar ni
+//   inventar datos desde internet.
+// Se pegan en: consola de Firebase > Firestore Database > Reglas.
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /proyectos/bikesafe/{document=**} {
+      allow read: if true;
+      allow write: if false;
+    }
+  }
+}
