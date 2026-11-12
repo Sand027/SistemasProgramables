@@ -60,19 +60,27 @@ Dos placas trabajan juntas:
 
 ## 🛠️ Hardware
 
-| # | Componente | Tipo | Cantidad | Costo aprox. MXN |
-|---|-----------|------|----------|-----------------|
-| 1 | ESP32 DevKit (WROOM-32) | Microcontrolador | 1 | $120 |
-| 2 | Freenove ESP32-WROVER con cámara GC0308 | Cámara | 1 | _(llenar)_ |
-| 3 | Lector RFID RC522 + llavero | Sensor | 1 | _(llenar)_ |
-| 4 | Acelerómetro MPU6050 | Sensor | 1 | _(llenar)_ |
-| 5 | Ultrasónico HC-SR04 | Sensor | 1 | _(llenar)_ |
-| 6 | Lazo anti-corte (interruptor de palanca + cable) | Sensor | 1 | _(llenar)_ |
-| 7 | Servo SG90 (cerrojo) | Actuador | 1 | _(llenar)_ |
-| 8 | Buzzer activo 5 V | Actuador | 1 | _(llenar)_ |
-| 9 | LED verde y rojo + 220 Ω | Actuador | 2 | _(llenar)_ |
-| 10 | Powerbank / arrancador USB · capacitores 1000 µF y 470 µF · divisor 1 kΩ/2 kΩ | Energía | 1 | _(llenar)_ |
-| **Total** | | | | **< $800 MXN** |
+| # | Componente | Tipo | Cant. | Costo MXN | Origen |
+|---|-----------|------|------|-----------|--------|
+| 1 | ESP32 DevKit (WROOM-32) | Microcontrolador | 1 | $120 | Kit ESP32 propio |
+| 2 | Freenove ESP32-WROVER con cámara GC0308 | Cámara | 1 | $420 | Compra |
+| 3 | Lector RFID RC522 + llavero | Sensor | 1 | $80 | Compra |
+| 4 | Acelerómetro MPU6050 | Sensor | 1 | $60* | Préstamo de la maestra |
+| 5 | Ultrasónico HC-SR04 | Sensor | 1 | $45* | Préstamo de la maestra |
+| 6 | Lazo anti-corte (interruptor de palanca 2 patas) | Sensor | 1 | $15 | Compra |
+| 7 | Servo SG90 (cerrojo) | Actuador | 1 | $50* | Préstamo de la maestra |
+| 8 | Buzzer activo 5 V | Actuador | 1 | $5 | Compra |
+| 9 | LED verde y rojo + resistencias 220 Ω, 1 kΩ, 2 kΩ | Actuador | 2 | $0 | Incluidos en el kit ESP32 |
+| 10 | Capacitores 1000 µF ($15), 470 µF ($8), 2 cerámicos 104 ($4 c/u) | Energía | 4 | $31 | Compra |
+| 11 | Carcasa impresa en 3D (PLA) | Estructura | 1 | $150 | Impresión con Gael |
+| 12 | Cable de acero con candado (genérico) | Estructura | 1 | $120* | Por comprar |
+| 13 | Powerbank USB | Energía | 1 | $0 | Propia |
+| | **Gastado por el equipo** (2, 3, 6, 8, 10, 11) | | | **$701** | |
+| | **Costo total del prototipo** (con kit, préstamos y candado) | | | **$1,096** | |
+
+\* Precio de referencia en tiendas en línea de México. No lo pagamos: es préstamo o todavía no se compra.
+
+> **Sobre el límite de $800:** lo que el equipo gastó ($701) entra en el presupuesto. El costo total del prototipo lo rebasa, sobre todo por la Freenove ($420). Elegimos la Freenove porque se programa directo por USB-C y trae PSRAM para manejar las fotos; la ESP32-CAM común es más barata, pero necesita una base programadora aparte.
 
 ### Diagrama de conexiones
 
@@ -130,8 +138,8 @@ mosquitto -v
 ```
 
 **2. Cargar firmware en las placas (Thonny):**
-- **ESP32 normal:** subir `main.py`, `config.py`, `red.py` y las carpetas `hal/` y `lib/` de `firmware/esp32/`. En `config.py` poner el WiFi y en `MQTT_BROKER` la IP de la laptop.
-- **Freenove:** subir `main.py`, `config.py` y `telegram.py` de `firmware/camara/`. Necesita MicroPython **con cámara** (`mpy_cam-…-ESP32_GENERIC-SPIRAM`). Llenar WiFi, `MQTT_BROKER`, `TELEGRAM_TOKEN` y `TELEGRAM_CHAT_ID`.
+- **ESP32 normal:** copiar `config.example.py` como `config.py` y llenarlo (WiFi, IP del broker). Subir `main.py`, `config.py`, `red.py` y las carpetas `hal/` y `lib/` de `firmware/esp32/`. En `config.py` poner el WiFi y en `MQTT_BROKER` la IP de la laptop.
+- **Freenove:** copiar `config.example.py` como `config.py` y llenarlo (WiFi, broker, token de Telegram). Subir `main.py`, `config.py` y `telegram.py` de `firmware/camara/`. **Los `config.py` reales no se suben a GitHub** (están en `.gitignore`). Necesita MicroPython **con cámara** (`mpy_cam-…-ESP32_GENERIC-SPIRAM`). Llenar WiFi, `MQTT_BROKER`, `TELEGRAM_TOKEN` y `TELEGRAM_CHAT_ID`.
 - Si al arrancar sale `MQTT: este firmware no trae umqtt`, instalarlo una vez desde la consola: `import mip; mip.install("umqtt.simple")`.
 
 **3. Ejecutar el servidor de IA:**
@@ -212,13 +220,27 @@ Recorrido del circuito en protoboard:
 | 5 | Servo SG90 (cerrojo) | GPIO13 (PWM 50 Hz) | `bikesafe/servo/cmd` | ° | 0 (abierto) – 90 (cerrado) |
 | 6 | Buzzer activo | GPIO25 | `bikesafe/buzzer/cmd` | — | `pitido` / `sirena_off` |
 | 7 | LED verde / rojo | GPIO32 / GPIO33 (220 Ω) | `bikesafe/led/cmd` | — | `alerta` / `normal` |
-| 8 | Freenove ESP32-WROVER (cámara GC0308) | UART2: TX GPIO17 → GPIO33 · RX GPIO16 ← GPIO32 · GND común | `bikesafe/cam/frame` | JPEG | 320 × 240 |
+| 8 | Freenove ESP32-WROVER (cámara GC0308) | Ver tabla de la Freenove ↓ | `bikesafe/cam/frame` | JPEG | 320 × 240 |
 
 ---
 
+### Pines de la Freenove (placa de la cámara)
+
+La Freenove es **otra ESP32** con su propio MicroPython. Sus pines se dividen en tres grupos:
+
+| Grupo | Pines de la Freenove | Va a | Notas |
+|------|----------------------|------|-------|
+| **Enlace con la ESP32** (UART) | **GPIO33** = RX (recibe) | **TX2 / GPIO17** de la ESP32 | La ESP32 manda `FOTO\|nivel\|motivo` |
+| | **GPIO32** = TX (envía) | **RX2 / GPIO16** de la ESP32 | La Freenove contesta `OK\|FOTO\|...` · 9600 baud |
+| | **GND** | Riel GND de la protoboard | **Obligatorio:** sin GND común no se entienden |
+| **Alimentación** | **USB-C** (5 V) | Powerbank | Con su propio cable; tomar 5 V del riel de la ESP32 no da corriente suficiente |
+| **Cámara** (fijos en la placa, no se cablean) | D0–D7: 4, 5, 18, 19, 36, 39, 34, 35 · VSYNC 25 · HREF 23 · PCLK 22 · XCLK 21 (10 MHz) · SDA 26 · SCL 27 | Cable plano de la cámara | No conectar nada más en estos pines |
+
+> Los cables van **cruzados**: lo que una placa envía (TX) lo recibe la otra (RX).
+
 ## 🔥 Esquema Firebase
 
-Cloud Firestore. Solo el servidor escribe (llave de servicio); el dashboard solo lee ([reglas](interfaz/firestore.rules)).
+Cloud Firestore. Solo el servidor escribe (llave de servicio). Para **leer**, el dashboard pide iniciar sesión con Google y las [reglas](interfaz/firestore.rules) solo permiten a las cuentas de los integrantes (por UID). Así las fotos de personas que analiza la IA **no son públicas**.
 
 ```
 proyectos/bikesafe/

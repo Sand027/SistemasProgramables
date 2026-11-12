@@ -1,6 +1,8 @@
 # ============================================
+# PLANTILLA: copien este archivo como config.py y llenen sus datos.
+# config.py NO se sube a GitHub (esta en .gitignore).
 # Proyecto:  BikeSafe - Candado inteligente portatil
-# Archivo:   config.py
+# Archivo:   config.example.py
 # Objetivo:  Guardar en UN solo lugar todo lo que se puede ajustar:
 #            pines, tarjetas autorizadas, umbrales, WiFi y MQTT
 # Equipo:    Oscar Sandoval Cabrera (23240457),

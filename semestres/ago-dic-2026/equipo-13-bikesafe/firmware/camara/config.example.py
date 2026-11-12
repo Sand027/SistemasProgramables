@@ -1,6 +1,8 @@
 # ============================================
+# PLANTILLA: copien este archivo como config.py y llenen sus datos.
+# config.py NO se sube a GitHub (esta en .gitignore).
 # Proyecto:  BikeSafe - Candado inteligente portatil
-# Archivo:   config.py   (va en la FREENOVE, la placa de la camara)
+# Archivo:   config.example.py   (va en la FREENOVE, la placa de la camara)
 # Objetivo:  Datos del WiFi, del bot de Telegram y ajustes de la foto
 # Equipo:    Oscar Sandoval Cabrera (23240457),
 #            Diego Josue Talamantes Santiago (23240355)

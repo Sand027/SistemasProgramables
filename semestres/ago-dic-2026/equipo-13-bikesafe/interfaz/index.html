@@ -54,7 +54,10 @@ de ejemplo sin Firebase.
 <body>
 <header>
   <div><h1>🚲 BikeSafe · Panel del candado</h1><small>Equipo 13 · Sistemas Programables · TecNM León</small></div>
-  <span id="conexion">Conectando…</span>
+  <div style="display:flex;gap:8px;align-items:center">
+    <span id="conexion">Conectando…</span>
+    <button id="sesion" style="display:none;border:0;border-radius:20px;padding:5px 12px;cursor:pointer;font-weight:600"></button>
+  </div>
 </header>
 <main>
   <div id="aviso"></div>
@@ -141,20 +144,47 @@ async function enVivo() {
   const { initializeApp } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
   const { getFirestore, doc, collection, query, orderBy, limit, onSnapshot } =
     await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
-  const db = getFirestore(initializeApp(firebaseConfig));
+  const { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } =
+    await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js");
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+  const auth = getAuth(app);
   const raiz = ["proyectos", "bikesafe"];
   const fecha = (x) => (x && x.toDate) ? x.toDate() : x;
   const ultimos = (col, n) => query(collection(db, ...raiz, col), orderBy("ts", "desc"), limit(n));
   const datos = (snap) => snap.docs.map((d) => { const v = d.data(); return { ...v, ts: fecha(v.ts) }; });
-  const error = (e) => { $("conexion").textContent = "Error de Firebase"; aviso("No pude leer Firestore: " + e.message + ". Revisen las reglas (interfaz/firestore.rules)."); };
+  let cancelar = [];
 
-  onSnapshot(doc(db, ...raiz, "estado", "actual"), (s) => {
-    $("conexion").textContent = "● En vivo (Firestore)";
-    if (s.exists()) { const v = s.data(); pintarEstado({ ...v, actualizado: fecha(v.actualizado) }); }
-  }, error);
-  onSnapshot(ultimos("lecturas", 40), (s) => pintarLecturas(datos(s).reverse()), error);
-  onSnapshot(ultimos("alertas", 8), (s) => pintarAlertas(datos(s)), error);
-  onSnapshot(ultimos("eventos_ia", 8), (s) => pintarFotos(datos(s)), error);
+  // Solo los integrantes del equipo pueden ver los datos (reglas de
+  // Firestore por UID). Las fotos de personas NO son publicas.
+  onAuthStateChanged(auth, (usuario) => {
+    cancelar.forEach((f) => f()); cancelar = [];
+    const boton = $("sesion");
+    boton.style.display = "inline-block";
+    if (!usuario) {
+      $("conexion").textContent = "Sin sesión";
+      boton.textContent = "Iniciar sesión con Google";
+      boton.onclick = () => signInWithPopup(auth, new GoogleAuthProvider()).catch((e) => aviso("No se pudo iniciar sesión: " + e.message));
+      aviso("Inicien sesión con su cuenta de Google del equipo para ver el panel. Los datos y las fotos son privados.");
+      return;
+    }
+    $("aviso").style.display = "none";
+    boton.textContent = "Salir (" + (usuario.displayName || usuario.email) + ")";
+    boton.onclick = () => signOut(auth);
+    const error = (e) => {
+      $("conexion").textContent = "Sin permiso";
+      aviso(e.code === "permission-denied"
+        ? "Tu cuenta no tiene permiso. Pásale este UID a quien administra el proyecto para agregarlo a las reglas: " + usuario.uid
+        : "No pude leer Firestore: " + e.message);
+    };
+    cancelar.push(onSnapshot(doc(db, ...raiz, "estado", "actual"), (s) => {
+      $("conexion").textContent = "● En vivo (Firestore)";
+      if (s.exists()) { const v = s.data(); pintarEstado({ ...v, actualizado: fecha(v.actualizado) }); }
+    }, error));
+    cancelar.push(onSnapshot(ultimos("lecturas", 40), (s) => pintarLecturas(datos(s).reverse()), error));
+    cancelar.push(onSnapshot(ultimos("alertas", 8), (s) => pintarAlertas(datos(s)), error));
+    cancelar.push(onSnapshot(ultimos("eventos_ia", 8), (s) => pintarFotos(datos(s)), error));
+  });
 }
 
 function aviso(texto) { $("aviso").style.display = "block"; $("aviso").textContent = texto; }

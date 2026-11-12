@@ -8,17 +8,26 @@
 // Semestre:  ago-dic-2026
 // ============================================
 //
-// - El dashboard (navegador) solo puede LEER.
-// - Solo el servidor Python escribe, con su llave de cuenta de servicio
-//   (firebase-admin se salta estas reglas). Asi nadie puede borrar ni
-//   inventar datos desde internet.
+// - Solo los integrantes del equipo pueden LEER, iniciando sesion con
+//   Google en el dashboard. Se identifican por su UID de Firebase
+//   (Authentication > Usuarios). Asi las fotos de personas que analiza
+//   la IA NO son publicas.
+// - Nadie escribe desde el navegador. Solo el servidor Python escribe,
+//   con su llave de cuenta de servicio (firebase-admin se salta estas
+//   reglas).
 // Se pegan en: consola de Firebase > Firestore Database > Reglas.
 
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    function esDelEquipo() {
+      return request.auth != null && request.auth.uid in [
+        "Mb2PTewTB8N3L1G7qAefPsLuAzv2",   // Oscar Sandoval Cabrera
+        "UID_JOSUE"    // Diego Josue Talamantes Santiago (pendiente)
+      ];
+    }
     match /proyectos/bikesafe/{document=**} {
-      allow read: if true;
+      allow read: if esDelEquipo();
       allow write: if false;
     }
   }
