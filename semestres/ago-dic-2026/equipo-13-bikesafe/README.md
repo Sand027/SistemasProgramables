@@ -85,6 +85,20 @@ Dos placas trabajan juntas:
 
 > **Cambio respecto al diagrama:** el buzzer quedó conectado **directo a D25** (sin el transistor 2N2222), porque con el transistor no sonaba. Es un buzzer activo y consume poca corriente, así que funciona igual.
 
+
+### Carcasa impresa en 3D
+
+![Carcasa BikeSafe](hardware/carcasa-3d/render_frente.png)
+
+Caja de PETG para el prototipo en protoboard (181 × 146 × 75 mm armada), diseñada en OpenSCAD y paramétrica. Lleva la protoboard de 830 puntos al frente, la mini protoboard con la Freenove y el MPU6050 atrás, y el servo a la izquierda. Tiene orificios para el HC-SR04, los LEDs y el buzzer en la pared frontal, una ventana para la cámara en la tapa, ranuras para el USB, el lazo anti-corte y el pestillo, ventilación, y la tapa encaja con ceja y 4 tornillos.
+
+| Archivo | Para qué |
+|---|---|
+| [`00_Probeta_tornillos.stl`](hardware/carcasa-3d/00_Probeta_tornillos.stl) | Prueba de agujeros de tornillo (2.3 / 2.5 / 2.7 mm) |
+| [`01_Base_BikeSafe.stl`](hardware/carcasa-3d/01_Base_BikeSafe.stl) · [`02_Tapa_BikeSafe.stl`](hardware/carcasa-3d/02_Tapa_BikeSafe.stl) | Piezas a imprimir |
+| [`BikeSafe_Carcasa.scad`](hardware/carcasa-3d/BikeSafe_Carcasa.scad) | Modelo editable (medidas en variables) |
+| [`Plano_BikeSafe.pdf`](hardware/carcasa-3d/Plano_BikeSafe.pdf) | Ficha de impresión + plantilla 1:1 del interior |
+
 ---
 
 ## 💻 Software y Firmware
@@ -97,7 +111,7 @@ equipo-13-bikesafe/
 │   └── pruebas/      ← una prueba por pieza (e02_servo.py … e11_lazo.py)
 ├── servidor/         ← mqtt_bridge.py, ia/detector.py, nube.py, requirements.txt
 ├── interfaz/         ← dashboard (index.html) + reglas de Firestore
-├── hardware/         ← arquitectura y diagramas
+├── hardware/         ← arquitectura, diagramas y carcasa-3d/ (STL + OpenSCAD)
 ├── media/            ← fotos del prototipo y evidencias
 └── docs/             ← infografía y reporte
 ```
