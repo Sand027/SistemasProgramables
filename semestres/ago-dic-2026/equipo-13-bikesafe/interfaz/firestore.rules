@@ -23,7 +23,7 @@ service cloud.firestore {
     function esDelEquipo() {
       return request.auth != null && request.auth.uid in [
         "Mb2PTewTB8N3L1G7qAefPsLuAzv2",   // Oscar Sandoval Cabrera
-        "UID_JOSUE"    // Diego Josue Talamantes Santiago (pendiente)
+        "qmVjHz5Q3XdO1ZMUaCzpm5Soh1E2"    // Diego Josue Talamantes Santiago
       ];
     }
     match /proyectos/bikesafe/{document=**} {
