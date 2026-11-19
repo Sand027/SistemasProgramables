@@ -1,7 +1,7 @@
 # ============================================
 # Proyecto:  BikeSafe - Candado inteligente portatil
 # Archivo:   main.py   (va en la ESP32 NORMAL, el "cerebro")
-# Objetivo:  Programa principal: lee el llavero RFID, cierra/abre
+# Objetivo:  Programa principal: obedece al bot de Telegram, cierra/abre
 #            el cerrojo, vigila la bici con el acelerometro, el
 #            ultrasonico y el lazo, y dispara la alarma de 2 niveles
 # Equipo:    Oscar Sandoval Cabrera (23240457),
@@ -57,6 +57,8 @@ class BikeSafe:
         self.ultra = self._crear("Ultrasonico", cfg.USAR_ULTRASONICO,
                                  self._crear_ultra)
         self.lazo = self._crear("Lazo", cfg.USAR_LAZO, self._crear_lazo)
+        self.pir = self._crear("PIR", getattr(cfg, "USAR_PIR", False),
+                               self._crear_pir)
         self.camara = self._crear("Camara", cfg.USAR_CAMARA,
                                   self._crear_camara)
         self.red = self._crear("Red", cfg.USAR_WIFI_MQTT, self._crear_red)
@@ -76,6 +78,14 @@ class BikeSafe:
         self._dist = None
         self._cambio = 0.0
         self._incl = 0.0
+        self._rafaga = 0             # fotos extra pendientes en un robo
+        self._rafaga_ms = 0
+        self._buscar_hasta = None    # boton "Buscar": sirena 5 s
+        self._pir_ms = None          # ultima vez que el PIR vio a alguien
+        self._n_avisos = 0           # contadores para "Estado"
+        self._n_robos = 0
+        self._inicio_ms = time.ticks_ms()
+        self._wdt = None
 
         # ---- recordar como estaba antes de apagarse ----
         # Si se va la luz con la bici asegurada, al volver NO debe
@@ -129,6 +139,10 @@ class BikeSafe:
     def _crear_lazo(self):
         from hal.sensores import LazoAntiCorte
         return LazoAntiCorte(cfg.PIN_LAZO)
+
+    def _crear_pir(self):
+        from hal.sensores import SensorPIR
+        return SensorPIR(cfg.PIN_PIR)
 
     def _crear_camara(self):
         return EnlaceCamara(cfg.PIN_CAM_TX, cfg.PIN_CAM_RX)
@@ -225,6 +239,8 @@ class BikeSafe:
         if self.estado == LIBRE:
             return
         self.buzzer.sirena(False)
+        self._rafaga = 0
+        self._buscar_hasta = None
         self.cerrojo.abrir()
         self._poner_estado(LIBRE)
         self.buzzer.pitido(2)
@@ -234,6 +250,7 @@ class BikeSafe:
     def aviso(self, motivo):
         """NIVEL 1: algo raro, pero todavia no es robo."""
         self._alerta("AVISO: " + motivo)
+        self._n_avisos += 1
         self.buzzer.pitido(2, 60, 60)
         self.rojo.encender()
         self._rojo_hasta = time.ticks_add(time.ticks_ms(), 1500)
@@ -244,23 +261,77 @@ class BikeSafe:
         if self.estado == ALARMA:
             return
         self._alerta("ROBO: " + motivo)
+        self._n_robos += 1
+        self._buscar_hasta = None
         self._alarma_desde = time.ticks_ms()
         self._rojo_hasta = None
         self._poner_estado(ALARMA)
         self.buzzer.sirena(True)
         self._foto("ROBO", motivo, forzar=True)
+        # Rafaga: mas fotos seguidas para tener mejor evidencia
+        self._rafaga = getattr(cfg, "FOTOS_EXTRA_ROBO", 2)
+        self._rafaga_ms = time.ticks_ms()
 
     def silenciar(self):
         """Calla la sirena pero la bici SIGUE asegurada."""
         if self.estado != ALARMA:
             return
         self.buzzer.sirena(False)
+        self._rafaga = 0
         time.sleep_ms(300)
         if self.acel:
             self.acel.guardar_referencia()   # nueva posicion de la bici
         self._toques = []
         self._inclinada_desde = None
         self._poner_estado(ASEGURADA)
+
+    def buscar(self):
+        """Boton "Buscar": suena unos segundos para encontrar la bici."""
+        if self.estado == ALARMA:
+            return
+        self.buzzer.sirena(True)
+        self.verde.parpadear(100)
+        self._buscar_hasta = time.ticks_add(
+            time.ticks_ms(), getattr(cfg, "DURACION_BUSCAR_MS", 5000))
+
+    def _texto_estado(self):
+        """Resumen para el boton "Estado" de Telegram."""
+        dist = self.ultra.distancia_cm() if self.ultra else None
+        minutos = time.ticks_diff(time.ticks_ms(), self._inicio_ms) // 60000
+        renglones = ["BikeSafe: {}".format(self.estado)]
+        if dist is not None:
+            renglones.append("Distancia al frente: {:.0f} cm".format(dist))
+        if self.acel and self.estado != LIBRE:
+            renglones.append("Inclinacion: {:.0f} grados".format(
+                self.acel.inclinacion()))
+        if self.lazo:
+            renglones.append("Cable: {}".format(
+                "CORTADO" if self.lazo.cortado() else "entero"))
+        if self.pir:
+            renglones.append("Movimiento cerca: {}".format(
+                "si" if self.pir.hay_alguien() else "no"))
+        renglones.append("Avisos: {}  Robos: {}".format(self._n_avisos,
+                                                         self._n_robos))
+        renglones.append("Encendido hace {} h {} min".format(minutos // 60,
+                                                             minutos % 60))
+        return "\n".join(renglones)
+
+    def _revisar_rafaga(self, ahora):
+        if self._rafaga <= 0:
+            return
+        if time.ticks_diff(ahora, self._rafaga_ms) >= getattr(
+                cfg, "ESPERA_RAFAGA_MS", 6000):
+            self._rafaga -= 1
+            self._rafaga_ms = ahora
+            self._foto("ROBO", "Foto extra del robo", forzar=True)
+
+    def _revisar_buscar(self, ahora):
+        if (self._buscar_hasta is not None and
+                time.ticks_diff(ahora, self._buscar_hasta) >= 0):
+            self._buscar_hasta = None
+            if self.estado != ALARMA:
+                self.buzzer.sirena(False)
+                self._poner_estado(self.estado)   # regresa las luces
 
     # ===========================================================
     #  REVISIONES (se llaman en cada vuelta del ciclo)
@@ -319,11 +390,18 @@ class BikeSafe:
                 len(self._toques), cfg.TOQUES_PARA_ROBO))
 
     def _revisar_presencia(self, ahora):
+        if self.pir and self.pir.hay_alguien():
+            self._pir_ms = ahora
         if not self.ultra or not self._toca("ultra", ahora, 300):
             return
         self._dist = self.ultra.distancia_cm()
         cerca = (self._dist is not None and
                  self._dist < cfg.DISTANCIA_CERCA_CM)
+        # Con PIR: solo cuenta si ademas el PIR vio movimiento hace poco
+        # (asi una pared o la mochila no generan fotos falsas)
+        if cerca and self.pir:
+            cerca = (self._pir_ms is not None and
+                     time.ticks_diff(ahora, self._pir_ms) < 5000)
         if not cerca:
             self._cerca_desde = None
             return
@@ -358,10 +436,43 @@ class BikeSafe:
         if not self.camara:
             return
         respuesta = self.camara.leer_respuesta()
-        if respuesta:
-            print("Camara dice:", respuesta)
-            if self.red:
-                self.red.publicar(b"bikesafe/camara", respuesta)
+        if not respuesta:
+            return
+        if respuesta.startswith("CMD|"):
+            self._comando_telegram(respuesta[4:])
+            return
+        print("Camara dice:", respuesta)
+        if self.red:
+            self.red.publicar(b"bikesafe/camara", respuesta)
+
+    def _comando_telegram(self, comando):
+        """Ordenes que el dueno manda desde el bot de Telegram."""
+        print("Telegram pide:", comando)
+        avisar = self.camara.mensaje
+        if comando == "asegurar":
+            if self.estado == LIBRE:
+                self.asegurar()          # ya manda "bici ASEGURADA"
+            else:
+                avisar("BikeSafe: ya estaba asegurada")
+        elif comando == "liberar":
+            if self.estado != LIBRE:
+                self.liberar()           # ya manda "bici LIBERADA"
+            else:
+                avisar("BikeSafe: ya estaba libre")
+        elif comando == "silenciar":
+            if self.estado == ALARMA:
+                self.silenciar()
+                avisar("BikeSafe: alarma silenciada, la bici sigue asegurada")
+            else:
+                avisar("BikeSafe: no hay alarma sonando")
+        elif comando == "estado":
+            avisar(self._texto_estado())
+        elif comando == "buscar":
+            if self.estado == ALARMA:
+                avisar("BikeSafe: la alarma ya esta sonando")
+            else:
+                self.buscar()
+                avisar("BikeSafe: sonando 5 segundos para que la encuentres")
 
     def _revisar_red(self, ahora):
         if not self.red:
@@ -380,6 +491,8 @@ class BikeSafe:
             elif comando == "foto":
                 self._foto("MANUAL", "Foto pedida desde el celular",
                            forzar=True)
+            elif comando == "buscar":
+                self.buscar()
             else:
                 self._comando_actuador(comando)
         if self._toca("publicar", ahora, cfg.PERIODO_PUBLICAR_MS):
@@ -411,6 +524,8 @@ class BikeSafe:
             self.buzzer.pitido(3, 80, 80)
             self.rojo.encender()
             self._rojo_hasta = time.ticks_add(time.ticks_ms(), 3000)
+            if self.camara:
+                self.camara.mensaje("BikeSafe: la IA vio a una PERSONA junto a tu bici")
         elif comando == "servo:cerrar":
             self.asegurar()
         elif comando == "servo:abrir" and cfg.PERMITIR_ABRIR_POR_MQTT:
@@ -442,7 +557,9 @@ class BikeSafe:
         if self.estado == ASEGURADA:
             self._revisar_lazo(ahora)
         if self.estado == ALARMA:
+            self._revisar_rafaga(ahora)
             self._revisar_fin_alarma(ahora)
+        self._revisar_buscar(ahora)
 
         self._revisar_camara()
         self._revisar_red(ahora)
@@ -459,8 +576,25 @@ class BikeSafe:
         self.verde.actualizar(ahora)
         self.rojo.actualizar(ahora)
 
+    def _activar_watchdog(self):
+        """Si el programa se traba mas de 20 s, la placa se reinicia sola.
+        OJO: una vez activo ya no se puede apagar; con Thonny la placa se
+        reinicia a los 20 s de presionar STOP. Por eso viene en False y
+        solo se activa para la exposicion (USAR_WATCHDOG en config.py)."""
+        if not getattr(cfg, "USAR_WATCHDOG", False):
+            return
+        try:
+            from machine import WDT
+            self._wdt = WDT(timeout=20000)
+            print(" + Watchdog activo (reinicio automatico)")
+        except Exception as e:
+            print(" ! Watchdog no disponible:", e)
+
     def correr(self):
+        self._activar_watchdog()
         while True:
+            if self._wdt:
+                self._wdt.feed()
             try:
                 self.vuelta()
             except KeyboardInterrupt:

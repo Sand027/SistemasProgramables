@@ -25,7 +25,7 @@ wlan = network.WLAN(network.STA_IF)
 wlan.active(True)
 if not wlan.isconnected():
     print("Conectando a", cfg.WIFI_SSID)
-    wlan.disconnect()
+    wlan.disconnect()          # por si el main.py dejo el WiFi a medias
     time.sleep(1)
     wlan.connect(cfg.WIFI_SSID, cfg.WIFI_PASS)
     for _ in range(60):

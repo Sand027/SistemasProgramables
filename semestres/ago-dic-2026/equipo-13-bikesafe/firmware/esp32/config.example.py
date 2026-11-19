@@ -50,6 +50,9 @@ PIN_LED_ROJO  = 33
 # Lazo anti-corte (un cable que va de este pin a GND)
 PIN_LAZO = 14
 
+# Sensor de movimiento PIR HC-SR501 (OUT), opcional
+PIN_PIR = 34           # D34 solo sirve como entrada: perfecto para el PIR
+
 # Enlace serie (UART2) con la placa de la camara
 PIN_CAM_TX = 17        # ESP32 TX2 -> Freenove GPIO33 (RX)
 PIN_CAM_RX = 16        # ESP32 RX2 <- Freenove GPIO32 (TX)
@@ -59,10 +62,11 @@ PIN_CAM_RX = 16        # ESP32 RX2 <- Freenove GPIO32 (TX)
 # ---------------------------------------------------------------
 # Deja en False lo que todavia no tengas armado. Asi el programa
 # principal funciona aunque falte una pieza (por ejemplo el RFID).
-USAR_RFID         = True
+USAR_RFID         = False  # se abre/cierra con el bot de Telegram
 USAR_ACELEROMETRO = True
 USAR_ULTRASONICO  = True
-USAR_LAZO         = False  # ponlo en True cuando conectes el lazo
+USAR_LAZO         = True
+USAR_PIR          = False  # True cuando conecten el PIR
 USAR_CAMARA       = True
 USAR_WIFI_MQTT    = True   # False = funciona sin red (solo Telegram)
 
@@ -106,6 +110,14 @@ ESPERA_ENTRE_FOTOS_MS = 20000  # no tomar fotos mas seguido que esto
 # 7. ALARMA
 # ---------------------------------------------------------------
 DURACION_ALARMA_MS = 60000  # la sirena se calla sola al minuto
+FOTOS_EXTRA_ROBO   = 2      # en un robo: 1 foto + estas extra
+ESPERA_RAFAGA_MS   = 6000   # tiempo entre fotos de la rafaga
+DURACION_BUSCAR_MS = 5000   # boton "Buscar": cuanto suena
+
+# Reinicio automatico (watchdog). True SOLO para la exposicion: si
+# algo se traba, la placa se reinicia sola. Con True, Thonny no podra
+# detener el programa (la placa se reinicia 20 s despues de STOP).
+USAR_WATCHDOG = False
 
 # ---------------------------------------------------------------
 # 8. WIFI Y MQTT (solo si USAR_WIFI_MQTT = True)

@@ -13,6 +13,7 @@
 # datos y el bot los publica en tu chat. Aqui armamos a mano esa
 # peticion web (HTTPS) porque asi no hay que instalar nada.
 
+import json
 import socket
 
 try:
@@ -53,9 +54,22 @@ def _para_url(texto):
     return salida
 
 
-def enviar_mensaje(token, chat_id, texto):
-    """Manda un mensaje de texto. Regresa True si Telegram lo acepto."""
-    cuerpo = "chat_id={}&text={}".format(chat_id, _para_url(texto)).encode()
+# Botones que aparecen abajo del chat (el usuario solo los toca)
+BOTONES = [["Cerrar", "Abrir"], ["Foto", "Estado"], ["Buscar", "Silenciar"]]
+CONFIRMAR = [["Si, abrir", "No"]]
+
+
+def enviar_mensaje(token, chat_id, texto, botones=False):
+    """Manda un mensaje de texto. Regresa True si Telegram lo acepto.
+    botones=True pone el teclado normal; botones="confirmar" pone
+    el de "Si, abrir / No"."""
+    cuerpo = "chat_id={}&text={}".format(chat_id, _para_url(texto))
+    if botones:
+        teclas = CONFIRMAR if botones == "confirmar" else BOTONES
+        teclado = json.dumps({"keyboard": teclas, "resize_keyboard": True,
+                              "is_persistent": True})
+        cuerpo += "&reply_markup=" + _para_url(teclado)
+    cuerpo = cuerpo.encode()
     cabecera = ("POST /bot{}/sendMessage HTTP/1.1\r\n"
                 "Host: {}\r\n"
                 "Content-Type: application/x-www-form-urlencoded\r\n"
@@ -104,3 +118,42 @@ def enviar_foto(token, chat_id, jpg, pie=""):
         return _salio_bien(s)
     finally:
         s.close()
+
+
+def obtener_comandos(token, desde=0):
+    """Pregunta a Telegram si hay mensajes nuevos para el bot.
+
+    Regresa (lista, siguiente) donde lista son tuplas
+    (chat_id, texto) y 'siguiente' es el numero que hay que mandar
+    la proxima vez para no repetir mensajes viejos.
+    """
+    ruta = "/bot{}/getUpdates?timeout=0&limit=5&offset={}".format(token, desde)
+    s = _conectar()
+    try:
+        # HTTP/1.0: Telegram contesta todo de una vez y cierra
+        s.write("GET {} HTTP/1.0\r\nHost: {}\r\n\r\n".format(
+            ruta, SERVIDOR).encode())
+        if not _salio_bien(s):
+            return [], desde
+        while True:                       # saltar las cabeceras
+            renglon = s.readline()
+            if not renglon or renglon == b"\r\n":
+                break
+        cuerpo = b""
+        while True:
+            pedazo = s.read(512)
+            if not pedazo:
+                break
+            cuerpo += pedazo
+    finally:
+        s.close()
+    datos = json.loads(cuerpo)
+    lista = []
+    siguiente = desde
+    for u in datos.get("result", []):
+        siguiente = u["update_id"] + 1
+        m = u.get("message") or {}
+        texto = m.get("text")
+        if texto:
+            lista.append((str(m["chat"]["id"]), texto.strip()))
+    return lista, siguiente

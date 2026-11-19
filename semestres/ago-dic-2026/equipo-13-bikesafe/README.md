@@ -20,7 +20,7 @@
 
 - **¿A quién ayuda?** A estudiantes y trabajadores que se mueven en bicicleta y la dejan en bici-estacionamientos públicos (escuela, trabajo, centro), donde los robos son frecuentes y los candados comunes se cortan en segundos.
 - **¿Qué problema resuelve?** Un candado normal no avisa: el dueño se entera del robo cuando regresa. BikeSafe vigila la bici, distingue un roce de un intento de robo, toma una foto del sospechoso y avisa al celular al instante.
-- **¿Qué lo hace diferente?** Es un candado **portátil** (va en la mochila y sirve en cualquier estacionamiento), se abre con llavero **RFID**, tiene **alarma de dos niveles** (aviso / robo) para no sonar con cada roce, y usa **visión por computadora** para confirmar que hay una persona junto a la bici antes de escalar la alerta.
+- **¿Qué lo hace diferente?** Es un candado **portátil** (va en la mochila y sirve en cualquier estacionamiento), se controla desde un **bot de Telegram** con botones (sin llaves ni app propia), tiene **alarma de dos niveles** (aviso / robo) para no sonar con cada roce, y usa **visión por computadora** para confirmar que hay una persona junto a la bici antes de escalar la alerta.
 
 ---
 
@@ -31,7 +31,7 @@
 Dos placas trabajan juntas:
 
 - **ESP32 normal (el cerebro):** lee los sensores, decide el estado del candado (LIBRE → ASEGURADA → ALARMA) y mueve los actuadores. Publica todo por MQTT.
-- **Freenove ESP32-WROVER (el fotógrafo):** recibe la orden `FOTO|nivel|motivo` por UART, toma la foto, la publica en `bikesafe/cam/frame` y la manda a Telegram.
+- **Freenove ESP32-WROVER (el fotógrafo):** recibe la orden `FOTO|nivel|motivo` por UART, toma la foto, la publica en `bikesafe/cam/frame` y la manda a Telegram. También atiende el **bot de Telegram**: cuando el dueño toca un botón, le pasa la orden a la ESP32 como `CMD|asegurar`.
 - **Servidor Python (laptop):** recibe sensores y fotos por MQTT; la IA (OpenCV) decide si hay una persona y, si la hay, publica `alerta_ia` para que el ESP32 avise. Guarda todo en Firebase.
 - **Dashboard web:** muestra en tiempo real el estado, la gráfica histórica, las alertas y las fotos analizadas.
 
@@ -64,7 +64,7 @@ Dos placas trabajan juntas:
 |---|-----------|------|------|-----------|--------|
 | 1 | ESP32 DevKit (WROOM-32) | Microcontrolador | 1 | $120 | Kit ESP32 propio |
 | 2 | Freenove ESP32-WROVER con cámara GC0308 | Cámara | 1 | $420 | Compra |
-| 3 | Lector RFID RC522 + llavero | Sensor | 1 | $80 | Compra |
+| 3 | Lector RFID RC522 + llavero (**se compró, pero se reemplazó por el bot de Telegram**, ver retos) | Sensor | 1 | $80 | Compra |
 | 4 | Acelerómetro MPU6050 | Sensor | 1 | $60* | Préstamo de la maestra |
 | 5 | Ultrasónico HC-SR04 | Sensor | 1 | $45* | Préstamo de la maestra |
 | 6 | Lazo anti-corte (interruptor de palanca 2 patas) | Sensor | 1 | $15 | Compra |
@@ -84,12 +84,15 @@ Dos placas trabajan juntas:
 
 ### Diagrama de conexiones
 
-![Diagrama de conexiones](hardware/diagrama.png)
+![Diagrama de conexiones](hardware/diagrama-sin-rfid.png)
 
 | Más diagramas | |
 |---|---|
-| [Acomodo en la protoboard](hardware/acomodo-protoboard.png) | [Alimentación y rieles](hardware/energia.png) |
+| [Protoboard completa (versión final)](hardware/protoboard-sin-rfid.png) | [Alimentación y rieles](hardware/energia.png) |
 | [Diagrama de bloques](hardware/bloques.png) | [Máquina de estados](hardware/maquina-estados.png) |
+| [Diagrama original con RFID](hardware/diagrama.png) | [Acomodo original con RFID](hardware/acomodo-protoboard.png) |
+
+> **PIR opcional:** si se conecta un HC-SR501, su OUT va a **GPIO34** y se activa con `USAR_PIR = True`. Así la foto de presencia solo se toma si el ultrasónico ve a alguien **y** el PIR detecta movimiento.
 
 > **Cambio respecto al diagrama:** el buzzer quedó conectado **directo a D25** (sin el transistor 2N2222), porque con el transistor no sonaba. Es un buzzer activo y consume poca corriente, así que funciona igual.
 
@@ -115,13 +118,13 @@ Caja de PETG para el prototipo en protoboard (181 × 146 × 75 mm armada), dise�
 equipo-13-bikesafe/
 ├── firmware/
 │   ├── esp32/        ← ESP32 normal: main.py, config.py, red.py, hal/, lib/mfrc522.py
-│   ├── camara/       ← Freenove: main.py, config.py, telegram.py
-│   └── pruebas/      ← una prueba por pieza (e02_servo.py … e11_lazo.py)
+│   ├── camara/       ← Freenove: main.py, config.py, telegram.py (bot)
+│   └── pruebas/      ← una prueba por pieza (e02_servo.py … e12_pir.py)
 ├── servidor/         ← mqtt_bridge.py, ia/detector.py, nube.py, requirements.txt
-├── interfaz/         ← dashboard (index.html) + reglas de Firestore
+├── interfaz/         ← dashboard (index.html), reglas de Firestore y bot-telegram.md
 ├── hardware/         ← arquitectura, diagramas y carcasa-3d/ (STL + OpenSCAD)
 ├── media/            ← fotos del prototipo y evidencias
-└── docs/             ← infografía y reporte
+└── docs/             ← infografía, reporte y DEMO.md (guion de la exposición)
 ```
 
 ### Requisitos del servidor Python
@@ -164,7 +167,8 @@ y entrar a `http://localhost:8000` (con `?demo=1` muestra datos de ejemplo).
 | `machine` | GPIO, PWM (servo, buzzer), I2C (MPU6050), SPI (RC522), UART (enlace entre placas) |
 | `network` | Conexión WiFi |
 | `camera` + `jpeg` | Cámara GC0308 y conversión del frame a JPEG (firmware `micropython-camera-API`) |
-| `lib/mfrc522.py` | Driver del lector RFID (incluido en el repo) |
+| `ssl` + `socket` | Bot de Telegram por HTTPS (`sendMessage`, `sendPhoto`, `getUpdates`), sin librerías extra |
+| `lib/mfrc522.py` | Driver del lector RFID (se conserva, desactivado con `USAR_RFID = False`) |
 
 ### Librerías servidor Python (corren en la PC)
 
@@ -216,7 +220,8 @@ Recorrido del circuito en protoboard:
 | 2 | MPU6050 (acelerómetro) | I2C SDA GPIO21 · SCL GPIO22 | `bikesafe/sensor/movimiento` | g | 0 – 2 (toque > 0.18) |
 | 2b | MPU6050 (inclinación) | I2C SDA GPIO21 · SCL GPIO22 | `bikesafe/sensor/inclinacion` | ° | 0 – 180 (robo > 25° por 1.2 s) |
 | 3 | Lazo anti-corte | GPIO14 (pull-up interno) | `bikesafe/sensor/lazo` | — | `ENTERO` / `CORTADO` |
-| 4 | Lector RFID RC522 | SPI: SDA GPIO5 · SCK GPIO18 · MOSI GPIO23 · MISO GPIO19 · RST GPIO4 | `bikesafe/alerta` / `bikesafe/estado` | UID | tarjetas de `TARJETAS_AUTORIZADAS` |
+| 4 | Bot de Telegram (reemplaza al RFID) | Por la Freenove → UART `CMD\|...` | `bikesafe/estado` | comando | Cerrar · Abrir (con confirmación) · Foto · Estado · Buscar · Silenciar |
+| 4b | PIR HC-SR501 (opcional) | GPIO34 (solo entrada) | `bikesafe/alerta` | — | 0 / 1 (movimiento en los últimos 5 s) |
 | 5 | Servo SG90 (cerrojo) | GPIO13 (PWM 50 Hz) | `bikesafe/servo/cmd` | ° | 0 (abierto) – 90 (cerrado) |
 | 6 | Buzzer activo | GPIO25 | `bikesafe/buzzer/cmd` | — | `pitido` / `sirena_off` |
 | 7 | LED verde / rojo | GPIO32 / GPIO33 (220 Ω) | `bikesafe/led/cmd` | — | `alerta` / `normal` |
@@ -237,6 +242,26 @@ La Freenove es **otra ESP32** con su propio MicroPython. Sus pines se dividen en
 | **Cámara** (fijos en la placa, no se cablean) | D0–D7: 4, 5, 18, 19, 36, 39, 34, 35 · VSYNC 25 · HREF 23 · PCLK 22 · XCLK 21 (10 MHz) · SDA 26 · SCL 27 | Cable plano de la cámara | No conectar nada más en estos pines |
 
 > Los cables van **cruzados**: lo que una placa envía (TX) lo recibe la otra (RX).
+
+## 📱 Bot de Telegram
+
+El dueño controla el candado desde Telegram, con botones (también acepta los comandos escritos, con o sin `/`):
+
+| Botón | Qué hace |
+|---|---|
+| **Cerrar** | Asegura: el servo cierra y empieza a vigilar |
+| **Abrir** | Pregunta **"¿Seguro?"** (Sí, abrir / No, válido 30 s) y abre |
+| **Foto** | Toma una foto en ese momento |
+| **Estado** | Estado, distancia, inclinación, cable, avisos, robos y tiempo encendido |
+| **Buscar** | Hace sonar el candado 5 s para encontrar la bici |
+| **Silenciar** | Calla la sirena; la bici sigue asegurada |
+
+- Las alertas llegan solas con emoji: ⚠️ aviso, 👀 presencia, 🚨 robo (ráfaga de **3 fotos**, una cada 6 s), 🤖 persona confirmada por la IA.
+- **Sin internet** el candado sigue vigilando; las alertas se guardan y se mandan cuando regresa la conexión.
+- Solo obedece al `TELEGRAM_CHAT_ID` del dueño. Detalle y protocolo UART: [interfaz/bot-telegram.md](interfaz/bot-telegram.md).
+- **Reinicio automático** (watchdog) opcional con `USAR_WATCHDOG = True`, pensado para la exposición.
+
+---
 
 ## 🔥 Esquema Firebase
 
@@ -282,7 +307,10 @@ Si no está `servidor/serviceAccountKey.json`, el servidor guarda lo mismo en `s
 3. **El buzzer no sonaba con el transistor 2N2222.** Se conectó directo a D25 (buzzer activo de bajo consumo).
 4. **Las pruebas corrían en la placa equivocada.** Con las dos placas conectadas, Thonny se conectaba a la Freenove (`SPIRAM` en el arranque) y no a la ESP32 normal (COM8).
 5. **El programa anterior (carrito) ignoraba STOP y Ctrl+C.** Se reinstaló MicroPython con *Erase all flash*.
-6. **La powerbank tiene una sola salida.** Alimentar la Freenove desde el riel de 5 V de la ESP32 no da corriente suficiente para cámara + WiFi; se requiere un cable USB "Y" o un hub.
+6. **El lector RFID RC522 nunca respondió.** Primero hubo un corto entre 3.3 V y GND por un puente de soldadura (se encontró con prueba de continuidad). Ya corregido, el lector seguía regresando `0x00`/`0xFF`: MOSI llegaba a solo 0.48 V y MISO quedaba flotando. Se decidió reemplazarlo por un **bot de Telegram**, que además evita perder el llavero.
+7. **El bot no recibía mensajes.** `getUpdates` regresaba vacío porque le escribíamos a BotFather y no a nuestro bot; además el WiFi daba `Internal State Error` hasta hacer `wlan.disconnect()` antes de conectar.
+8. **Los saltos de línea se perdían por el UART.** El protocolo es de un renglón por mensaje, así que el resumen de *Estado* se manda con `~` en lugar de `\n` y la Freenove lo regresa a saltos de línea.
+9. **La powerbank tiene una sola salida.** Alimentar la Freenove desde el riel de 5 V de la ESP32 no da corriente suficiente para cámara + WiFi; se requiere un cable USB "Y" o un hub.
 
 ---
 
@@ -290,9 +318,9 @@ Si no está `servidor/serviceAccountKey.json`, el servidor guarda lo mismo en `s
 
 | Sprint | Entregable | Estado |
 |--------|-----------|--------|
-| 1 · HAL + MQTT | 4 sensores y 3 actuadores funcionando, tópicos MQTT, Tabla HAL | ✅ En protoboard (falta montar el RC522, en camino) |
+| 1 · HAL + MQTT | 4 sensores y 3 actuadores funcionando, tópicos MQTT, Tabla HAL | ✅ En protoboard (RFID reemplazado por el bot de Telegram) |
 | 2 · CAM + IA | Cámara publica frames, servidor con OpenCV decide y activa actuador | ✅ Código listo y probado con fotos reales de la cámara |
-| 3 · Firebase + carcasa | Histórico en Firestore, dashboard, carcasa cerrada | 🟡 Firebase y dashboard funcionando · falta la carcasa |
+| 3 · Firebase + carcasa | Histórico en Firestore, dashboard, carcasa cerrada | 🟡 Firebase, dashboard y bot de Telegram funcionando · falta la carcasa |
 | 4 · Final | Video, reporte PDF, fotos con carcasa | ⬜ Pendiente |
 
 ---

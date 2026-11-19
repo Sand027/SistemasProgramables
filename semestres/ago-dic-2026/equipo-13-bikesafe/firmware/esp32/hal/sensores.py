@@ -172,3 +172,17 @@ class LazoAntiCorte:
                 return False
             time.sleep_ms(2)
         return True
+
+
+# ---------------------------------------------------------------
+#  SENSOR DE MOVIMIENTO PIR (HC-SR501)
+# ---------------------------------------------------------------
+class SensorPIR:
+    """Detecta el calor de una persona que se mueve cerca.
+    Su pin OUT da 3.3 V cuando ve a alguien y 0 V cuando no."""
+
+    def __init__(self, pin):
+        self._pin = Pin(pin, Pin.IN)
+
+    def hay_alguien(self):
+        return self._pin.value() == 1

@@ -161,6 +161,8 @@ class EnlaceCamara:
                                                self._limpiar(motivo)))
 
     def mensaje(self, texto):
+        # Los saltos de linea viajan como "~" (el enlace es por renglones)
+        texto = str(texto).replace("\n", "~")
         self._uart.write("MSG|{}\n".format(self._limpiar(texto)))
 
     def leer_respuesta(self):

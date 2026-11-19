@@ -16,6 +16,11 @@
 #   FOTO|ROBO|Forcejeo continuo -> foto + Telegram con ese texto
 #   MSG|BikeSafe: bici ASEGURADA -> solo manda el texto
 #
+#   Ademas revisa el chat del bot cada pocos segundos. El dueno toca
+#   los botones Cerrar, Abrir, Silenciar o Estado (o los escribe, con
+#   o sin "/"), y se lo pasa a la ESP32 normal como "CMD|asegurar"
+#   (ella es la que decide). "Foto" la resuelve la Freenove sola.
+#
 #   Y contesta:  OK|FOTO|telegram   /  OK|FOTO|guardada  /  ERR|...
 #
 # Ademas, cada foto se publica por MQTT para el servidor de IA:
@@ -51,6 +56,12 @@ CAM_PCLK = 22
 CAM_XCLK = 21
 CAM_SDA = 26
 CAM_SCL = 27
+
+
+# Emojis para que las alertas se distingan rapido en el celular
+EMOJI = {"ROBO": "\U0001F6A8", "AVISO": "\u26A0\uFE0F",
+         "PRESENCIA": "\U0001F440", "FOTO": "\U0001F4F7",
+         "MANUAL": "\U0001F4F7", "PRUEBA": "\U0001F9EA"}
 
 
 # ---------------------------------------------------------------
@@ -160,11 +171,19 @@ class Fotografo:
         self.wlan = network.WLAN(network.STA_IF)
         self.camara = Camara()
         self.servidor = None
-        self.mqtt = None
-        self._mqtt_intento_ms = time.ticks_add(time.ticks_ms(), -60000)
         self.conectar_wifi()
         if cfg.USAR_WEB:
             self._abrir_web()
+        self._bot_desde = 0
+        self._confirmar_hasta = None   # esperando "Si, abrir"
+        self._pendientes = []          # alertas que no salieron por falta de internet
+        self._reintento_ms = 0
+        self._sin_internet = False
+        self._wdt = None
+        self._bot_ultima_ms = time.ticks_ms()
+        self._bot_listo = False
+        self.mqtt = None
+        self._mqtt_intento_ms = time.ticks_add(time.ticks_ms(), -60000)
         self.responder("OK|LISTA")
         print("=== Lista. Esperando ordenes ===\n")
 
@@ -187,13 +206,51 @@ class Fotografo:
 
     def _revisar_wifi(self, ahora):
         if self.wlan.isconnected():
+            if self._sin_internet:
+                self._sin_internet = False
+                print("WiFi: volvio la conexion")
             return
+        if not self._sin_internet:
+            self._sin_internet = True
+            print("WiFi: se perdio la conexion, guardo las alertas")
         if time.ticks_diff(ahora, self._wifi_intento_ms) > 20000:
             self._wifi_intento_ms = ahora
             try:
                 self.wlan.connect(cfg.WIFI_SSID, cfg.WIFI_PASS)
             except Exception:
                 pass
+
+    # ---------- enlace serie ----------
+    def responder(self, texto):
+        self.uart.write(texto + "\n")
+
+    def _leer_orden(self):
+        dato = self.uart.read()
+        if dato:
+            self._pendiente += dato
+            if len(self._pendiente) > 400:
+                self._pendiente = b""
+        if b"\n" in self._pendiente:
+            renglon, self._pendiente = self._pendiente.split(b"\n", 1)
+            try:
+                return renglon.decode().strip()
+            except Exception:
+                return None
+        return None
+
+    # ---------- fotos ----------
+    def _guardar(self, jpg):
+        """Guarda la foto en la memoria de la placa. Solo conserva
+        las ultimas FOTOS_GUARDADAS (va encimando las mas viejas)."""
+        nombre = "foto_{}.jpg".format(self._numero % cfg.FOTOS_GUARDADAS)
+        self._numero += 1
+        try:
+            with open(nombre, "wb") as f:
+                f.write(jpg)
+            return nombre
+        except OSError as e:
+            print("No pude guardar la foto:", e)
+            return None
 
     # ---------- MQTT (para el servidor de IA) ----------
     def _conectar_mqtt(self):
@@ -234,74 +291,86 @@ class Fotografo:
             self.mqtt = None
             return False
 
-    # ---------- enlace serie ----------
-    def responder(self, texto):
-        self.uart.write(texto + "\n")
-
-    def _leer_orden(self):
-        dato = self.uart.read()
-        if dato:
-            self._pendiente += dato
-            if len(self._pendiente) > 400:
-                self._pendiente = b""
-        if b"\n" in self._pendiente:
-            renglon, self._pendiente = self._pendiente.split(b"\n", 1)
-            try:
-                return renglon.decode().strip()
-            except Exception:
-                return None
-        return None
-
-    # ---------- fotos ----------
-    def _guardar(self, jpg):
-        """Guarda la foto en la memoria de la placa. Solo conserva
-        las ultimas FOTOS_GUARDADAS (va encimando las mas viejas)."""
-        nombre = "foto_{}.jpg".format(self._numero % cfg.FOTOS_GUARDADAS)
-        self._numero += 1
-        try:
-            with open(nombre, "wb") as f:
-                f.write(jpg)
-            return nombre
-        except OSError as e:
-            print("No pude guardar la foto:", e)
-            return None
-
     def tomar_y_enviar(self, nivel, motivo):
         self.led.value(1)
         jpg = self.camara.foto()
         self.led.value(0)
+        pie = "{} BikeSafe {}: {}".format(EMOJI.get(nivel, ""), nivel,
+                                          motivo).strip()
         if jpg is None:
+            # Sin foto, por lo menos que llegue el aviso en texto
             self.responder("ERR|FOTO|la camara no entrego imagen")
+            self.enviar_texto(pie + " (sin foto)")
             return
         print("Foto tomada: {} bytes ({})".format(len(jpg), nivel))
         nombre = self._guardar(jpg)
         self.publicar_frame(jpg, nivel, motivo)
         if cfg.USAR_TELEGRAM and self.wlan.isconnected():
-            pie = "BikeSafe {}: {}".format(nivel, motivo)
             try:
                 if telegram.enviar_foto(cfg.TELEGRAM_TOKEN,
                                         cfg.TELEGRAM_CHAT_ID, jpg, pie):
                     self.responder("OK|FOTO|telegram")
                     return
                 self.responder("ERR|FOTO|Telegram la rechazo (token/chat)")
+                return
             except Exception as e:
                 sys.print_exception(e)
                 self.responder("ERR|FOTO|sin internet")
-            return
+        if cfg.USAR_TELEGRAM and nombre:
+            self._guardar_pendiente(nombre, pie)
         self.responder("OK|FOTO|guardada como {}".format(nombre))
 
-    def enviar_texto(self, texto):
-        if not (cfg.USAR_TELEGRAM and self.wlan.isconnected()):
+    def enviar_texto(self, texto, botones=False):
+        if not cfg.USAR_TELEGRAM:
             self.responder("OK|MSG|no enviado (Telegram apagado)")
+            return
+        if not self.wlan.isconnected():
+            self._guardar_pendiente(None, texto)
+            self.responder("OK|MSG|guardado hasta que vuelva el internet")
             return
         try:
             bien = telegram.enviar_mensaje(cfg.TELEGRAM_TOKEN,
-                                           cfg.TELEGRAM_CHAT_ID, texto)
+                                           cfg.TELEGRAM_CHAT_ID, texto,
+                                           botones)
             self.responder("OK|MSG|telegram" if bien
                            else "ERR|MSG|Telegram lo rechazo")
         except Exception as e:
             sys.print_exception(e)
+            self._guardar_pendiente(None, texto)
             self.responder("ERR|MSG|sin internet")
+
+    # ---------- alertas guardadas cuando no hay internet ----------
+    def _guardar_pendiente(self, archivo, texto):
+        self._pendientes.append((archivo, texto))
+        # Las fotos se van encimando, asi que no guardamos mas que esas
+        if len(self._pendientes) > cfg.FOTOS_GUARDADAS:
+            self._pendientes = self._pendientes[-cfg.FOTOS_GUARDADAS:]
+
+    def _reenviar_pendientes(self, ahora):
+        if not self._pendientes or not self.wlan.isconnected():
+            return
+        if time.ticks_diff(ahora, self._reintento_ms) < 15000:
+            return
+        self._reintento_ms = ahora
+        total = len(self._pendientes)
+        try:
+            telegram.enviar_mensaje(
+                cfg.TELEGRAM_TOKEN, cfg.TELEGRAM_CHAT_ID,
+                "Volvio el internet. Te mando {} alerta(s) guardada(s):".format(total))
+            while self._pendientes:
+                archivo, texto = self._pendientes[0]
+                if archivo:
+                    with open(archivo, "rb") as f:
+                        jpg = f.read()
+                    telegram.enviar_foto(cfg.TELEGRAM_TOKEN,
+                                         cfg.TELEGRAM_CHAT_ID, jpg, texto)
+                else:
+                    telegram.enviar_mensaje(cfg.TELEGRAM_TOKEN,
+                                            cfg.TELEGRAM_CHAT_ID, texto)
+                self._pendientes.pop(0)
+                gc.collect()
+        except Exception as e:
+            print("Pendientes: aun no se pudieron mandar:", e)
 
     def atender_orden(self, renglon):
         print("Orden:", renglon)
@@ -311,9 +380,85 @@ class Fotografo:
             motivo = partes[2] if len(partes) > 2 else ""
             self.tomar_y_enviar(nivel, motivo)
         elif partes[0] == "MSG":
-            self.enviar_texto(partes[1] if len(partes) > 1 else "")
+            texto = partes[1] if len(partes) > 1 else ""
+            self.enviar_texto(texto.replace("~", "\n"))
         else:
             self.responder("ERR|no entiendo")
+
+    # ---------- comandos del bot de Telegram ----------
+    AYUDA = ("BikeSafe - usa los botones de abajo:\n"
+             "Cerrar - asegura la bici\n"
+             "Abrir - libera la bici (pide confirmar)\n"
+             "Foto - foto de la bici ahora\n"
+             "Estado - como esta el candado\n"
+             "Buscar - suena para encontrar tu bici\n"
+             "Silenciar - calla la alarma (sigue asegurada)")
+
+    # Palabras que entiende (con o sin "/", mayusculas o minusculas)
+    PASAR_A_ESP32 = {"cerrar": "asegurar", "asegurar": "asegurar",
+                     "silenciar": "silenciar", "callar": "silenciar",
+                     "estado": "estado", "buscar": "buscar"}
+
+    @staticmethod
+    def _limpiar_comando(texto):
+        """'/Cerrar@BikeSafe_bot' o 'cerrar ya' -> 'cerrar'."""
+        palabra = texto.strip().split()[0] if texto.strip() else ""
+        palabra = palabra.split("@")[0].lstrip("/").lower()
+        for a, b in (("\u00e1", "a"), ("\u00e9", "e"), ("\u00ed", "i"),
+                     ("\u00f3", "o"), ("\u00fa", "u")):
+            palabra = palabra.replace(a, b)
+        return "".join(c for c in palabra if c.isalpha())   # "si," -> "si"
+
+    def _revisar_bot(self, ahora):
+        if not (cfg.USAR_TELEGRAM and self.wlan.isconnected()):
+            return
+        cada = getattr(cfg, "REVISAR_BOT_CADA_S", 3) * 1000
+        if time.ticks_diff(ahora, self._bot_ultima_ms) < cada:
+            return
+        self._bot_ultima_ms = ahora
+        gc.collect()
+        try:
+            if not self._bot_listo:
+                # Al arrancar ignoramos los mensajes viejos del chat
+                _, self._bot_desde = telegram.obtener_comandos(
+                    cfg.TELEGRAM_TOKEN, -1)
+                self._bot_listo = True
+                print("Bot listo: esperando comandos de Telegram")
+                # Avisar que ya prendio y dejar los botones en el chat
+                self.enviar_texto("BikeSafe encendido. Usa los botones de abajo.",
+                                  botones=True)
+                return
+            comandos, self._bot_desde = telegram.obtener_comandos(
+                cfg.TELEGRAM_TOKEN, self._bot_desde)
+        except Exception as e:
+            print("Bot: no pude revisar Telegram:", e)
+            return
+        for chat, texto in comandos:
+            if chat != str(cfg.TELEGRAM_CHAT_ID):
+                print("Bot: ignoro mensaje de otro chat", chat)
+                continue
+            comando = self._limpiar_comando(texto)
+            print("Bot: comando", comando)
+            esperando = (self._confirmar_hasta is not None and
+                         time.ticks_diff(self._confirmar_hasta, ahora) > 0)
+            self._confirmar_hasta = None
+            if comando in ("abrir", "liberar"):
+                # Pedir confirmacion para no abrirla por accidente
+                self._confirmar_hasta = time.ticks_add(ahora, 30000)
+                self.enviar_texto("Seguro que quieres ABRIR el candado?",
+                                  botones="confirmar")
+            elif comando == "si" and esperando:
+                self.responder("CMD|liberar")
+                self.enviar_texto("Abriendo...", botones=True)
+            elif comando == "no" or comando == "si":
+                self.enviar_texto("Ok, no se abre. Sigue como estaba.",
+                                  botones=True)
+            elif comando in self.PASAR_A_ESP32:
+                self.responder("CMD|" + self.PASAR_A_ESP32[comando])
+            elif comando == "foto":
+                self.tomar_y_enviar("FOTO", "Foto pedida desde Telegram")
+            else:
+                self.enviar_texto(self.AYUDA, botones=True)
 
     # ---------- pagina web (foto en vivo) ----------
     def _abrir_web(self):
@@ -354,13 +499,23 @@ class Fotografo:
 
     # ---------- ciclo ----------
     def correr(self):
+        if getattr(cfg, "USAR_WATCHDOG", False):
+            # Reinicio automatico si algo se traba mas de 60 s.
+            # OJO: con esto activo Thonny no puede detener el programa.
+            from machine import WDT
+            self._wdt = WDT(timeout=60000)
+            print("Watchdog activo")
         while True:
+            if self._wdt:
+                self._wdt.feed()
             try:
                 orden = self._leer_orden()
                 if orden:
                     self.atender_orden(orden)
                 self._atender_web()
                 self._revisar_wifi(time.ticks_ms())
+                self._revisar_bot(time.ticks_ms())
+                self._reenviar_pendientes(time.ticks_ms())
             except KeyboardInterrupt:
                 raise
             except Exception as e:

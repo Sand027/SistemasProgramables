@@ -46,6 +46,14 @@ USAR_WEB = True
 # LED azul integrado de la Freenove (GPIO2): destella al tomar foto
 PIN_LED = 2
 
+# Cada cuantos segundos revisa si le escribieron al bot
+# (botones Cerrar, Abrir, Foto, Estado, Buscar, Silenciar)
+REVISAR_BOT_CADA_S = 3
+
+# Reinicio automatico si algo se traba (watchdog). True SOLO para la
+# exposicion: con True, Thonny ya no puede detener el programa.
+USAR_WATCHDOG = False
+
 # ---------------------------------------------------------------
 # MQTT: mandar cada foto al servidor Python con IA (OpenCV)
 # ---------------------------------------------------------------
