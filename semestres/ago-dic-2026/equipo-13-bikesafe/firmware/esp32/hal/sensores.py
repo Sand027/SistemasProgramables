@@ -1,9 +1,9 @@
 # ============================================
 # Proyecto:  BikeSafe - Candado inteligente portatil
 # Archivo:   hal/sensores.py
-# Objetivo:  Una clase por cada sensor (RFID, acelerometro,
-#            ultrasonico y lazo anti-corte) para que main.py
-#            solo pregunte "que esta pasando" sin saber de pines
+# Objetivo:  Una clase por cada sensor (acelerometro, ultrasonico,
+#            interruptor magnetico del cerrojo, lazo anti-corte y PIR)
+#            para que main.py solo pregunte "que esta pasando"
 # Equipo:    Oscar Sandoval Cabrera (23240457),
 #            Diego Josue Talamantes Santiago (23240355)
 # Materia:   Sistemas Programables - ISC TecNM Leon
@@ -13,48 +13,31 @@
 # HAL = "capa de abstraccion de hardware". Es la capa que habla
 # directamente con las piezas. main.py nunca toca un pin: le pide
 # las cosas a estas clases.
+#
+# Los 3 sensores del proyecto:
+#   1. Acelerometro MPU6050   -> toques, forcejeo e inclinacion
+#   2. Ultrasonico HC-SR04    -> alguien parado junto a la bici
+#   3. Interruptor magnetico  -> el cerrojo de verdad esta cerrado
+#      (reed switch)             o lo abrieron a la fuerza
+# Extras: lazo anti-corte (cable que se rompe) y PIR opcional.
 
 import math
 import time
 from machine import Pin, I2C, time_pulse_us
 
 
-# ---------------------------------------------------------------
-#  LECTOR RFID RC522
-# ---------------------------------------------------------------
-class LectorRFID:
-    """Lee el numero (UID) de la tarjeta o llavero que se acerque."""
-
-    def __init__(self, sck, mosi, miso, sda, rst):
-        from mfrc522 import MFRC522
-        self._chip = MFRC522(sck=sck, mosi=mosi, miso=miso, rst=rst, cs=sda)
-        self._ultimo_uid = None
-        self._ultimo_ms = 0
-
-    def conectado(self):
-        """True si el chip contesta (sirve para detectar cables mal)."""
-        return self._chip.version() not in (0x00, 0xFF)
-
-    def leer(self, ignorar_repetida_ms=2500):
-        """Regresa el UID ("A1B2C3D4") solo UNA vez por pasada.
-
-        Si dejas la tarjeta pegada, no la repite hasta que pasen
-        'ignorar_repetida_ms' milisegundos. Asi no abre y cierra
-        el candado como loco.
-        """
-        uid = self._chip.leer_uid()
-        if uid is None:
-            return None
-        ahora = time.ticks_ms()
-        repetida = (uid == self._ultimo_uid and
-                    time.ticks_diff(ahora, self._ultimo_ms) < ignorar_repetida_ms)
-        self._ultimo_uid = uid
-        self._ultimo_ms = ahora
-        return None if repetida else uid
+def _estable(pin, valor, veces=3, espera_ms=2):
+    """True si el pin lee 'valor' varias veces seguidas (quita ruido
+    y rebotes de los contactos mecanicos)."""
+    for _ in range(veces):
+        if pin.value() != valor:
+            return False
+        time.sleep_ms(espera_ms)
+    return True
 
 
 # ---------------------------------------------------------------
-#  ACELEROMETRO MPU6050
+#  1. ACELEROMETRO MPU6050
 # ---------------------------------------------------------------
 class Acelerometro:
     """Detecta si mueven o inclinan la bici.
@@ -72,6 +55,10 @@ class Acelerometro:
         self._i2c = I2C(0, sda=Pin(sda), scl=Pin(scl), freq=400000)
         self._buf = bytearray(6)
         self._ref = (0.0, 0.0, 1.0)
+        self.fallas = 0              # lecturas seguidas que fallaron
+        self._despertar()
+
+    def _despertar(self):
         # El MPU6050 arranca "dormido": escribir 0 en el registro
         # 0x6B lo despierta.
         self._i2c.writeto_mem(self.DIRECCION, 0x6B, b"\x00")
@@ -86,8 +73,15 @@ class Acelerometro:
         return valor - 65536 if valor > 32767 else valor
 
     def leer(self):
-        """Regresa (ax, ay, az) en g. En reposo uno de los tres vale ~1."""
-        self._i2c.readfrom_mem_into(self.DIRECCION, 0x3B, self._buf)
+        """Regresa (ax, ay, az) en g. En reposo uno de los tres vale ~1.
+        Si el cable I2C se suelta lanza OSError (main.py lo cuenta como
+        posible sabotaje)."""
+        try:
+            self._i2c.readfrom_mem_into(self.DIRECCION, 0x3B, self._buf)
+        except OSError:
+            self.fallas += 1
+            raise
+        self.fallas = 0
         b = self._buf
         # 16384 cuentas = 1 g (escala de +-2 g, la de fabrica)
         return (self._con_signo(b[0], b[1]) / 16384,
@@ -129,18 +123,23 @@ class Acelerometro:
 
 
 # ---------------------------------------------------------------
-#  SENSOR ULTRASONICO HC-SR04
+#  2. SENSOR ULTRASONICO HC-SR04
 # ---------------------------------------------------------------
 class Ultrasonico:
     """Mide distancia con sonido: manda un 'clic' y cuenta cuanto
-    tarda en regresar el eco."""
+    tarda en regresar el eco.
+
+    El HC-SR04 a veces da lecturas locas (un eco que rebota raro).
+    Por eso guardamos las ultimas 3 y regresamos la de en medio
+    (mediana): un valor loco aislado nunca gana."""
 
     def __init__(self, trig, echo):
         self._trig = Pin(trig, Pin.OUT, value=0)
         self._echo = Pin(echo, Pin.IN)
+        self._ultimas = []
 
-    def distancia_cm(self):
-        """Regresa la distancia en cm, o None si no hubo eco."""
+    def medir_una(self):
+        """Una sola medicion en cm, o None si no hubo eco."""
         self._trig.value(0)
         time.sleep_us(3)
         self._trig.value(1)
@@ -151,11 +150,51 @@ class Ultrasonico:
         if duracion < 0:
             return None
         # El sonido viaja a 0.0343 cm por microsegundo, ida y vuelta
-        return duracion * 0.0343 / 2
+        cm = duracion * 0.0343 / 2
+        return cm if 2 <= cm <= 400 else None
+
+    def distancia_cm(self):
+        """Distancia filtrada (mediana de las ultimas 3 lecturas)."""
+        self._ultimas.append(self.medir_una())
+        self._ultimas = self._ultimas[-3:]
+        validas = sorted(v for v in self._ultimas if v is not None)
+        if not validas:
+            return None
+        return validas[len(validas) // 2]
 
 
 # ---------------------------------------------------------------
-#  LAZO ANTI-CORTE
+#  3. INTERRUPTOR MAGNETICO DEL CERROJO (reed switch)
+# ---------------------------------------------------------------
+class SensorCerrojo:
+    """Un reed switch es un interruptor que se cierra cuando le
+    acercas un iman. El reed va pegado por dentro de la carcasa, junto
+    al orificio del pasador, y el iman va en la punta del cable de
+    acero (o en el pasador que mueve el servo).
+
+      iman cerca  (cable metido / pasador cerrado) -> contacto cerrado
+      iman lejos  (cable fuera  / pasador abierto) -> contacto abierto
+
+    Conexion: una patita del reed al pin, la otra a GND. Usamos la
+    resistencia interna (pull-up): contacto cerrado = 0, abierto = 1.
+    """
+
+    def __init__(self, pin, cerrado_es=0):
+        self._pin = Pin(pin, Pin.IN, Pin.PULL_UP)
+        self._cerrado_es = cerrado_es
+
+    def cerrado(self):
+        return _estable(self._pin, self._cerrado_es)
+
+    def abierto(self):
+        return _estable(self._pin, 1 - self._cerrado_es)
+
+    def texto(self):
+        return "CERRADO" if self._pin.value() == self._cerrado_es else "ABIERTO"
+
+
+# ---------------------------------------------------------------
+#  LAZO ANTI-CORTE (extra)
 # ---------------------------------------------------------------
 class LazoAntiCorte:
     """Un cable que sale del pin, recorre el cable de acero y
@@ -167,15 +206,11 @@ class LazoAntiCorte:
 
     def cortado(self):
         # Leemos 3 veces para no dar falsa alarma por ruido
-        for _ in range(3):
-            if self._pin.value() == 0:
-                return False
-            time.sleep_ms(2)
-        return True
+        return _estable(self._pin, 1)
 
 
 # ---------------------------------------------------------------
-#  SENSOR DE MOVIMIENTO PIR (HC-SR501)
+#  SENSOR DE MOVIMIENTO PIR HC-SR501 (opcional)
 # ---------------------------------------------------------------
 class SensorPIR:
     """Detecta el calor de una persona que se mueve cerca.

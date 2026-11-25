@@ -25,6 +25,6 @@ for ruta in sys.argv[1:]:
         print(ruta, "-> no se pudo abrir")
         continue
     r = detector.analizar(img)
-    print("{} -> {} ({:.0f}%, {}, giro {})".format(
-        ruta, r.clase, r.confianza * 100, r.modelo, r.giro))
+    print("{} -> {} ({:.0f}%, {} persona(s), {}, giro {})".format(
+        ruta, r.clase, r.confianza * 100, r.personas, r.modelo, r.giro))
     cv2.imwrite(ruta.rsplit(".", 1)[0] + "_ia.jpg", detector.dibujar(img, r))

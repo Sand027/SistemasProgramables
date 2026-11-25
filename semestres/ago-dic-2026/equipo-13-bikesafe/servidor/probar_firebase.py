@@ -33,7 +33,7 @@ for i in range(10):
                "distancia": round(random.uniform(110, 150) if i < 7 else random.uniform(25, 40), 1),
                "movimiento": round(0.42 if i == 8 else random.uniform(0.0, 0.06), 2),
                "inclinacion": round(random.uniform(0.5, 2.0), 1),
-               "lazo": "ENTERO"}
+               "cerrojo": "CERRADO", "lazo": "ENTERO", "luz": "azul"}
     nube.guardar_lectura(lectura)
     nube.actualizar_estado(lectura)
     time.sleep(0.3)
@@ -49,8 +49,9 @@ detector = DetectorPersonas(cfg.CONFIANZA_MINIMA, cfg.PROBAR_GIROS)
 res = detector.analizar(img)
 print("   IA:", res.clase, "{:.0f}%".format(res.confianza * 100))
 ok, chico = cv2.imencode(".jpg", cv2.resize(detector.dibujar(img, res), (240, 180)))
-nube.guardar_evento_ia(res, "alerta_ia" if res.hay_persona else "ninguna",
-                       "PRUEBA", "Foto de ejemplo", chico.tobytes() if ok else None)
+nube.guardar_evento_ia(res, "PRUEBA", "Foto de ejemplo",
+                       chico.tobytes() if ok else None)
+nube.guardar_evento("estado", "LIBRE -> ASEGURADA", "telegram", "ASEGURADA")
 nube.actualizar_estado({"ultima_ia": res.clase,
                         "ultima_confianza": round(res.confianza, 3)})
 print("Listo. Abran el dashboard o la consola de Firestore para verlo.")

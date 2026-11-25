@@ -26,14 +26,19 @@
 # Ademas, cada foto se publica por MQTT para el servidor de IA:
 #   bikesafe/cam/info   -> {"nivel": "ROBO", "motivo": "...", "n": 7}
 #   bikesafe/cam/frame  -> la foto en JPEG (bytes)
+# El servidor NO le contesta a esta placa: le manda el resultado de la
+# IA a la ESP32 normal, que es la que decide si es para alarmarse.
+#
+# Seguridad del bot: solo obedece al TELEGRAM_CHAT_ID del dueno. Si un
+# extrano le escribe, lo ignora y le avisa al dueno.
 #
 # NECESITA un firmware de MicroPython QUE INCLUYA CAMARA (el normal
 # no la trae). La guia explica cual instalar. Este programa funciona
 # con los dos firmwares mas comunes y detecta solo cual tienes.
 
 import gc
-import os
 import sys
+import json
 import time
 import socket
 import network
@@ -176,6 +181,7 @@ class Fotografo:
             self._abrir_web()
         self._bot_desde = 0
         self._confirmar_hasta = None   # esperando "Si, abrir"
+        self._intrusos = []            # chats ajenos que ya se reportaron
         self._pendientes = []          # alertas que no salieron por falta de internet
         self._reintento_ms = 0
         self._sin_internet = False
@@ -183,16 +189,55 @@ class Fotografo:
         self._bot_ultima_ms = time.ticks_ms()
         self._bot_listo = False
         self.mqtt = None
+        self._ping_ms = time.ticks_ms()
         self._mqtt_intento_ms = time.ticks_add(time.ticks_ms(), -60000)
         self.responder("OK|LISTA")
         print("=== Lista. Esperando ordenes ===\n")
 
     # ---------- WiFi ----------
-    def conectar_wifi(self, espera_s=15):
+    def _reiniciar_wifi(self):
+        """Suelta conexiones a medias (evita 'Wifi Internal State Error')."""
+        try:
+            self.wlan.disconnect()
+        except Exception:
+            pass
+        self.wlan.active(False)
+        time.sleep_ms(200)
         self.wlan.active(True)
-        if not self.wlan.isconnected():
-            print("WiFi: conectando a", cfg.WIFI_SSID)
+        time.sleep_ms(200)
+
+    def _conectar(self):
+        if cfg.WIFI_PASS:
             self.wlan.connect(cfg.WIFI_SSID, cfg.WIFI_PASS)
+        else:                                   # red abierta
+            self.wlan.connect(cfg.WIFI_SSID)
+
+    def conectar_wifi(self, espera_s=15, intentos=3):
+        self.wlan.active(True)
+        for n in range(1, intentos + 1):
+            if self.wlan.isconnected():
+                break
+            self._reiniciar_wifi()
+            if n == 1:
+                try:
+                    redes = {}
+                    for r in self.wlan.scan():
+                        redes[r[0].decode()] = r[3]
+                    if cfg.WIFI_SSID in redes:
+                        print("WiFi: si veo", cfg.WIFI_SSID, "con senal",
+                              redes[cfg.WIFI_SSID], "dBm")
+                    else:
+                        print("WiFi: NO veo", repr(cfg.WIFI_SSID))
+                        print("  Redes que si veo:", list(redes))
+                except Exception:
+                    pass
+            print("WiFi: conectando a", cfg.WIFI_SSID,
+                  "(intento", n, "de", intentos, ")")
+            try:
+                self._conectar()
+            except OSError as e:
+                print("WiFi: error al conectar:", e)
+                continue
             limite = time.ticks_add(time.ticks_ms(), espera_s * 1000)
             while (not self.wlan.isconnected() and
                    time.ticks_diff(limite, time.ticks_ms()) > 0):
@@ -212,11 +257,13 @@ class Fotografo:
             return
         if not self._sin_internet:
             self._sin_internet = True
+            self.mqtt = None
             print("WiFi: se perdio la conexion, guardo las alertas")
         if time.ticks_diff(ahora, self._wifi_intento_ms) > 20000:
             self._wifi_intento_ms = ahora
             try:
-                self.wlan.connect(cfg.WIFI_SSID, cfg.WIFI_PASS)
+                self._reiniciar_wifi()
+                self._conectar()
             except Exception:
                 pass
 
@@ -253,21 +300,34 @@ class Fotografo:
             return None
 
     # ---------- MQTT (para el servidor de IA) ----------
-    def _conectar_mqtt(self):
+    def _id_cliente(self):
+        """Nombre unico en el broker publico (numero de serie del chip)."""
+        try:
+            from machine import unique_id
+            from binascii import hexlify
+            return "{}-{}".format(cfg.MQTT_CLIENTE,
+                                  hexlify(unique_id()).decode()[-6:])
+        except Exception:
+            return cfg.MQTT_CLIENTE
+
+    def _conectar_mqtt(self, ya=False):
+        """ya=True: intenta aunque haya fallado hace poco."""
         if not getattr(cfg, "USAR_MQTT", False) or MQTTClient is None:
             return False
         if self.mqtt:
             return True
         ahora = time.ticks_ms()
-        if (not self.wlan.isconnected() or
-                time.ticks_diff(ahora, self._mqtt_intento_ms) < 15000):
+        if not self.wlan.isconnected():
+            return False
+        if not ya and time.ticks_diff(ahora, self._mqtt_intento_ms) < 15000:
             return False
         self._mqtt_intento_ms = ahora
         try:
-            c = MQTTClient(cfg.MQTT_CLIENTE, cfg.MQTT_BROKER,
+            c = MQTTClient(self._id_cliente(), cfg.MQTT_BROKER,
                            port=cfg.MQTT_PUERTO, keepalive=60)
             c.connect()
             self.mqtt = c
+            self._ping_ms = ahora
             print("MQTT OK en", cfg.MQTT_BROKER)
             return True
         except Exception as e:
@@ -275,21 +335,35 @@ class Fotografo:
             self.mqtt = None
             return False
 
+    def _mantener_mqtt(self, ahora):
+        """Ping cada 30 s: sin esto el broker corta la conexion por
+        inactividad y la siguiente foto se perderia."""
+        if self.mqtt and time.ticks_diff(ahora, self._ping_ms) > 30000:
+            self._ping_ms = ahora
+            try:
+                self.mqtt.ping()
+                self.mqtt.check_msg()      # leer la respuesta del ping
+            except Exception:
+                print("MQTT: se cayo, reconecto en la siguiente foto")
+                self.mqtt = None
+
     def publicar_frame(self, jpg, nivel, motivo):
-        """Manda la foto al servidor Python (OpenCV) por MQTT."""
-        if not self._conectar_mqtt():
-            return False
-        try:
-            info = '{{"nivel": "{}", "motivo": "{}", "n": {}}}'.format(
-                nivel, motivo.replace('"', "'"), self._numero)
-            self.mqtt.publish(b"bikesafe/cam/info", info)
-            self.mqtt.publish(b"bikesafe/cam/frame", jpg)
-            print("Foto publicada por MQTT:", len(jpg), "bytes")
-            return True
-        except Exception as e:
-            print("MQTT: fallo al publicar:", e)
-            self.mqtt = None
-            return False
+        """Manda la foto al servidor Python (IA) por MQTT. Si la
+        conexion estaba caida, reconecta y lo intenta una vez mas."""
+        info = json.dumps({"nivel": nivel, "motivo": motivo,
+                           "n": self._numero})
+        for intento in (1, 2):
+            if not self._conectar_mqtt(ya=(intento == 2)):
+                return False
+            try:
+                self.mqtt.publish(b"bikesafe/cam/info", info)
+                self.mqtt.publish(b"bikesafe/cam/frame", jpg)
+                print("Foto publicada por MQTT:", len(jpg), "bytes")
+                return True
+            except Exception as e:
+                print("MQTT: fallo al publicar ({}): {}".format(intento, e))
+                self.mqtt = None
+        return False
 
     def tomar_y_enviar(self, nivel, motivo):
         self.led.value(1)
@@ -436,6 +510,11 @@ class Fotografo:
         for chat, texto in comandos:
             if chat != str(cfg.TELEGRAM_CHAT_ID):
                 print("Bot: ignoro mensaje de otro chat", chat)
+                if chat not in self._intrusos:
+                    # Avisarle al dueno UNA vez por cada extrano
+                    self._intrusos.append(chat)
+                    self.enviar_texto("\u26A0\uFE0F Alguien mas (chat {}) intento "
+                                      "usar tu bot. Lo ignore.".format(chat))
                 continue
             comando = self._limpiar_comando(texto)
             print("Bot: comando", comando)
@@ -516,6 +595,7 @@ class Fotografo:
                 self._revisar_wifi(time.ticks_ms())
                 self._revisar_bot(time.ticks_ms())
                 self._reenviar_pendientes(time.ticks_ms())
+                self._mantener_mqtt(time.ticks_ms())
             except KeyboardInterrupt:
                 raise
             except Exception as e:

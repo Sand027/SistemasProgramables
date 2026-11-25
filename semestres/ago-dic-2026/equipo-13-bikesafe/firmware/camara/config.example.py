@@ -1,6 +1,4 @@
 # ============================================
-# PLANTILLA: copien este archivo como config.py y llenen sus datos.
-# config.py NO se sube a GitHub (esta en .gitignore).
 # Proyecto:  BikeSafe - Candado inteligente portatil
 # Archivo:   config.example.py   (va en la FREENOVE, la placa de la camara)
 # Objetivo:  Datos del WiFi, del bot de Telegram y ajustes de la foto
@@ -9,12 +7,15 @@
 # Materia:   Sistemas Programables - ISC TecNM Leon
 # Semestre:  ago-dic-2026
 # ============================================
+#
+# PLANTILLA: copien este archivo como config.py y llenen sus datos.
+# config.py NO se sube a GitHub (esta en .gitignore).
 
 # ---------------- WiFi ----------------
 # Debe ser una red de 2.4 GHz CON internet (para Telegram).
 # El hotspot del celular funciona bien.
 WIFI_SSID = "TU_RED"
-WIFI_PASS = "TU_PASSWORD"
+WIFI_PASS = "TU_PASSWORD"     # "" si la red es abierta
 
 # ---------------- Telegram ----------------
 # Ponlo en True cuando ya tengas el token y el chat_id
@@ -55,10 +56,11 @@ REVISAR_BOT_CADA_S = 3
 USAR_WATCHDOG = False
 
 # ---------------------------------------------------------------
-# MQTT: mandar cada foto al servidor Python con IA (OpenCV)
+# MQTT: mandar cada foto al servidor Python con IA (deteccion de
+# personas). Si la laptop esta apagada no pasa nada: Telegram y la
+# alarma funcionan igual.
 # ---------------------------------------------------------------
 USAR_MQTT = True
-MQTT_BROKER = "192.168.1.100"   # IP de la compu con Mosquitto (la misma
-                                # que en el config.py de la ESP32 normal)
+MQTT_BROKER = "broker.hivemq.com"   # el mismo que en la ESP32 normal
 MQTT_PUERTO = 1883
 MQTT_CLIENTE = "bikesafe-cam"
