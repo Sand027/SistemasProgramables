@@ -12,7 +12,7 @@
 | Nombre | Matrícula | Rol | GitHub |
 |--------|-----------|-----|--------|
 | Oscar Sandoval Cabrera | 23240457 | 🔧 Firmware ESP32 · 🧠 Servidor Python/IA · ☁️ Firebase/Interfaz | [@Sand027](https://github.com/Sand027) |
-| Diego Josué Talamantes Santiago | 23240355 | 🔩 Hardware/Carcasa/Soldadura · 📝 Documentación | [@josuegoku2203-creator](https://github.com/josuegoku2203-creator) |
+| Diego Josué Talamantes Santiago | 23240355 | 🔩 Hardware/Carcasa/Montaje · 📝 Documentación | [@josuegoku2203-creator](https://github.com/josuegoku2203-creator) |
 
 > 📋 **Revisiones de la maestra:** cada observación y lo que se cambió está en [docs/REVISION.md](docs/REVISION.md).
 
@@ -158,11 +158,16 @@ Esto se comprueba en la prueba de punta a punta: el frame que pasa por el broker
 
 > **Sobre el límite de $800:** lo que el equipo gastó ($706) entra en el presupuesto. El costo total lo rebasa por la Freenove ($420). La elegimos porque se programa directo por USB-C y trae PSRAM para las fotos; la ESP32-CAM común es más barata, pero necesita una base programadora aparte.
 
-### Diagrama de conexiones y placa soldada
+### Montaje y diagrama de conexiones
 
-![Placa perforada](hardware/placa-perforada.png)
+> **Decisión honesta sobre el montaje:** la maestra pidió pasar el circuito a placa perforada soldada por la vibración de la bici. **Por tiempo, la versión que se entrega sigue en protoboard**, montada para aguantar la vibración lo más posible:
+> - protoboard **pegada dentro de la caja**, con los cables que salen **amarrados con cinchos**;
+> - **cable rígido cortado a medida** en lugar de jumpers largos;
+> - el RC522 y los módulos con **jumpers hembra-macho directos**, **sin unir dos jumpers entre sí** (eso fue lo que falló con el primer RC522 y con el servo).
+>
+> El diseño de la placa perforada y el procedimiento de soldadura quedan listos como **siguiente paso** en [docs/SOLDADURA.md](docs/SOLDADURA.md); la lista de conexiones es la misma.
 
-Lista completa de conexiones y procedimiento de soldadura: **[docs/SOLDADURA.md](docs/SOLDADURA.md)**.
+![Placa perforada (diseño para la versión soldada)](hardware/placa-perforada.png)
 
 | Más diagramas | |
 |---|---|
@@ -255,13 +260,13 @@ Sin placas: `python simular_placas.py ../media/ia-deteccion-persona.jpg`. Con `?
 
 ## 🎥 Demostración
 
-**Video demostrativo (YouTube):** _(se sube con la versión soldada)_ · Guion: [docs/DEMO.md](docs/DEMO.md)
+**Video demostrativo (YouTube):** _(se sube con la versión final)_ · Guion: [docs/DEMO.md](docs/DEMO.md)
 
-| Prototipo (frente) | Interior antes de soldar | En operación | Telegram: alerta con foto |
+| Prototipo (frente) | Interior (versión anterior) | En operación | Telegram: alerta con foto |
 |---|---|---|---|
 | ![frontal](media/prototipo-frontal.jpg) | ![interna](media/prototipo-interno-dupont.jpg) | ![operacion](media/sistema-operacion.jpg) | ![telegram](media/telegram-demo-cable-cortado.jpg) |
 
-> La foto del interior muestra el cableado **con Dupont**, que la maestra observó en la revisión. Se está pasando a placa perforada soldada ([docs/SOLDADURA.md](docs/SOLDADURA.md)).
+> La foto del interior es de la versión anterior, con Dupont sueltos (lo que observó la maestra). En la versión final la protoboard va fija dentro de la caja, con cable rígido y cinchos (ver *Montaje*).
 
 ---
 
@@ -357,7 +362,7 @@ En la primera versión el equipo compró un **RC522** para armar y desarmar con 
 
 **Decisión de entonces:** por tiempo, el control se pasó al **bot de Telegram** y el RFID se quitó del código (`USAR_RFID = False`).
 
-**Ahora:** la maestra nos prestó un **RC522 que sí funciona**, y el RFID volvió como **sensor 3**: reconoce al dueño. Va **soldado** a la placa perforada (sin protoboard ni jumpers unidos) y usa el **SPI por hardware** (VSPI). Por eso el reed y el azul del LED cambiaron de pin. El firmware revisa la versión del chip al arrancar: si contesta `0x00`/`0xFF`, avisa por Telegram y BikeSafe sigue funcionando con el bot y el dashboard.
+**Ahora:** la maestra nos prestó un **RC522 que sí funciona**, y el RFID volvió como **sensor 3**: reconoce al dueño. Va conectado con **jumpers hembra-macho directos** (sin unir jumpers entre sí, que fue la falla de la primera vez) y usa el **SPI por hardware** (VSPI). Por eso el reed y el azul del LED cambiaron de pin. El firmware revisa la versión del chip al arrancar: si contesta `0x00`/`0xFF`, avisa por Telegram y BikeSafe sigue funcionando con el bot y el dashboard.
 
 > 📷 Las fotos del primer RC522 conectado en la protoboard están en [`media/rfid-primer-intento-*.jpg`](media/) y la captura de `diag_rfid.py` en [`media/rfid-diagnostico.jpg`](media/).
 
@@ -366,10 +371,10 @@ En la primera versión el equipo compró un **RC522** para armar y desarmar con 
 ## ⚠️ Retos técnicos encontrados
 
 1. **La cámara GC0308 no genera JPEG por hardware** (`ESP_ERR_NOT_SUPPORTED`). Se captura en RGB565 y se convierte con el módulo `jpeg` (`RGB565_BE`, reloj de 10 MHz).
-2. **El servo no se movía:** un **jumper roto por dentro** (0.1–0.5 V en vez de 5 V). Por eso, y por la vibración de la bici, el circuito final va **soldado**.
+2. **El servo no se movía:** un **jumper roto por dentro** (0.1–0.5 V en vez de 5 V). Por eso ya no se unen jumpers entre sí y los cables van cortados a medida y amarrados.
 3. **El buzzer no sonaba con el 2N2222:** se conectó directo a D25.
 4. **Las pruebas corrían en la placa equivocada:** Thonny estaba en la Freenove (`SPIRAM`) y no en la ESP32 (COM8).
-5. **El primer lector RFID nunca respondió** (ver la sección anterior). Se resolvió con un módulo nuevo, soldado y en el bus SPI por hardware.
+5. **El primer lector RFID nunca respondió** (ver la sección anterior). Se resolvió con un módulo nuevo, conectado directo y en el bus SPI por hardware.
 6. **Conflicto de pines:** el RFID necesita 18, 19 y 23 (SPI). El reed pasó a GPIO15 y el azul del LED a GPIO2.
 7. **El concepto de "candado" no se cumplía:** un servo SG90 no traba una bici. Se cambió el enfoque a **vigilancia y alarma**, y el servo pasó a ser el **obturador de privacidad** de la cámara.
 8. **`Wifi Internal State Error`:** se arregló con `disconnect()` y apagar/prender el WiFi antes de conectar, más 3 reintentos.
@@ -389,10 +394,10 @@ Antes de cargarlo a las placas, el firmware se probó en una **simulación** con
 
 | Sprint | Entregable | Estado |
 |--------|-----------|--------|
-| 1 · HAL + MQTT | 3 sensores (MPU6050, HC-SR04, RFID) y 3 actuadores (servo, buzzer, LED RGB), tópicos, Tabla HAL | ✅ Código y pruebas · 🟡 montar RFID, reed y LED RGB en la placa soldada |
+| 1 · HAL + MQTT | 3 sensores (MPU6050, HC-SR04, RFID) y 3 actuadores (servo, buzzer, LED RGB), tópicos, Tabla HAL | ✅ Código y pruebas · 🟡 montar RFID, reed y LED RGB en la protoboard final |
 | 2 · CAM + IA | Cámara publica frames cifrados, IA de personas, la ESP32 decide | ✅ YOLOv5 probado con fotos reales |
-| 3 · Firebase + carcasa | Firestore en las 2 direcciones, dashboard con control, carcasa | ✅ Firebase y dashboard · ✅ carcasa impresa · 🟡 soldadura y obturador |
-| 4 · Final | Video, reporte PDF, fotos con la versión soldada | 🟡 En proceso (cierre: lunes 30 de noviembre, 11:59) |
+| 3 · Firebase + carcasa | Firestore en las 2 direcciones, dashboard con control, carcasa | ✅ Firebase y dashboard · ✅ carcasa impresa · 🟡 montaje fijo y obturador · ⏭️ soldadura (siguiente paso) |
+| 4 · Final | Video, reporte PDF, fotos de la versión final | 🟡 En proceso (cierre: lunes 30 de noviembre, 11:59) |
 
 ---
 

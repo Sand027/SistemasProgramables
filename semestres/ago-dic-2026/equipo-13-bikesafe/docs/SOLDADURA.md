@@ -1,5 +1,7 @@
 # 🔥 Guía de soldadura: de protoboard a placa perforada
 
+> **Estado (27/nov):** por tiempo, la entrega final quedó en **protoboard fija dentro de la caja**. Esta guía es el **siguiente paso**; la lista de conexiones de abajo es la misma que usa la protoboard.
+
 **Por qué:** en una bicicleta hay vibración constante. Un cable Dupont que se afloja en la demo apaga un sensor (o la alarma entera). En la placa fenólica todo queda **soldado, compacto y firme**.
 
 ![Placa perforada](../hardware/placa-perforada.png)
