@@ -1,49 +1,53 @@
 # ============================================
-# Proyecto:  BikeSafe - Candado inteligente portatil
+# Proyecto:  BikeSafe - Sistema de vigilancia y alarma para bicicletas
 # Archivo:   main.py   (va en la ESP32 NORMAL, el "cerebro")
-# Objetivo:  Programa principal: obedece al dueno (Telegram o dashboard),
-#            mueve el cerrojo, vigila la bici con sus sensores y DECIDE
-#            la alarma de 2 niveles, sin depender de la laptop
+# Objetivo:  Programa principal: reconoce al dueno con RFID (o Telegram /
+#            dashboard), vigila la bici con sus sensores y DECIDE la
+#            alarma de 2 niveles, sin depender de la laptop
 # Equipo:    Oscar Sandoval Cabrera (23240457),
 #            Diego Josue Talamantes Santiago (23240355)
 # Materia:   Sistemas Programables - ISC TecNM Leon
 # Semestre:  ago-dic-2026
 # ============================================
 #
-# La ESP32 corre este archivo SOLA cada vez que recibe energia.
+# BikeSafe es un sistema de VIGILANCIA: la caja va amarrada a la bici
+# con una abrazadera; detecta, avisa y guarda evidencia. No bloquea la
+# bici ni pretende impedir fisicamente el robo.
 #
-# COMO PIENSA EL CANDADO (maquina de estados):
+# COMO PIENSA (maquina de estados):
 #
-#     LIBRE  --Cerrar-->  ASEGURADA  --robo-->  ALARMA
-#       ^                     |  ^                 |
-#       +------Abrir----------+  +---Silenciar-----+
-#       +---------------------Abrir----------------+
+#   DESARMADO --tarjeta del dueno / Armar--> VIGILANDO --robo--> ALARMA
+#       ^                                      |   ^                |
+#       +----tarjeta del dueno / Desarmar------+   +---Silenciar----+
+#       +-------------------tarjeta del dueno / Desarmar------------+
 #
-#   LIBRE      cerrojo abierto, LED verde parpadeando lento
-#   ASEGURADA  cerrojo cerrado, LED azul fijo, sensores vigilando
-#   ALARMA     sirena + LED rojo rapido + rafaga de fotos + Telegram
+#   DESARMADO  el dueno esta con su bici. LED verde parpadeando y la
+#              camara TAPADA por el obturador (privacidad).
+#   VIGILANDO  LED azul fijo, camara destapada, sensores vigilando.
+#   ALARMA     sirena + LED rojo rapido + rafaga de fotos + Telegram.
 #
 # ALARMA DE 2 NIVELES (para que un roce no dispare la sirena):
-#   Nivel 1 AVISO: un toque, alguien parado junto a la bici o la IA ve
-#                  a una persona -> pitidos + color + foto. Sigue ASEGURADA.
-#   Nivel 2 ROBO:  forcejeo (4 toques en 6 s), bici inclinada, cable
-#                  cortado, cerrojo abierto a la fuerza, o la IA ve a una
-#                  persona MIENTRAS mueven la bici -> ALARMA.
+#   Nivel 1 AVISO: un toque, alguien parado junto a la bici, una tarjeta
+#                  que no es del dueno o la IA ve a una persona
+#                  -> pitidos + color + foto. Sigue VIGILANDO.
+#   Nivel 2 ROBO:  forcejeo (4 toques en 6 s), bici inclinada, abrieron
+#                  la caja, cortaron el cable de sujecion, 3 tarjetas
+#                  desconocidas seguidas, o la IA ve a una persona
+#                  MIENTRAS mueven la bici -> ALARMA.
 #
 # TODAS las decisiones se toman aqui. La laptop (servidor con IA) solo
-# INFORMA lo que vio en la foto; si la laptop esta apagada, el candado
-# protege la bici igual.
+# INFORMA lo que vio en la foto; si esta apagada, la vigilancia sigue.
 
 import sys
 import time
 import json
 
 import config as cfg
-from hal.actuadores import (Cerrojo, Zumbador, Luz, LedRGB, DosLeds,
+from hal.actuadores import (Obturador, Zumbador, Luz, LedRGB, DosLeds,
                             EnlaceCamara)
 
-LIBRE = "LIBRE"
-ASEGURADA = "ASEGURADA"
+DESARMADO = "DESARMADO"
+VIGILANDO = "VIGILANDO"
 ALARMA = "ALARMA"
 
 ARCHIVO_ESTADO = "estado.txt"
@@ -58,11 +62,13 @@ def _cfg(nombre, defecto):
 class BikeSafe:
     def __init__(self):
         print("\n=== BikeSafe arrancando ===")
+        self._fallaron = []          # piezas que no respondieron al arrancar
         # ---- actuadores (siempre estan) ----
         self.luz = Luz(self._crear_led())
         self.buzzer = Zumbador(cfg.PIN_BUZZER, cfg.BUZZER_ACTIVO)
-        self.cerrojo = Cerrojo(cfg.PIN_SERVO, cfg.SERVO_ABIERTO,
-                               cfg.SERVO_CERRADO)
+        self.obturador = Obturador(cfg.PIN_SERVO,
+                                   _cfg("SERVO_TAPADO", 0),
+                                   _cfg("SERVO_DESTAPADO", 90))
         self.luz.destello("cian", 800)        # "estoy prendiendo"
 
         # ---- sensores (cada uno puede faltar) ----
@@ -70,10 +76,12 @@ class BikeSafe:
                                 self._crear_acel)
         self.ultra = self._crear("Ultrasonico HC-SR04", cfg.USAR_ULTRASONICO,
                                  self._crear_ultra)
-        self.reed = self._crear("Sensor magnetico del cerrojo",
-                                _cfg("USAR_SENSOR_CERROJO", False),
-                                self._crear_reed)
-        self.lazo = self._crear("Lazo anti-corte", cfg.USAR_LAZO,
+        self.rfid = self._crear("Lector RFID RC522", _cfg("USAR_RFID", False),
+                                self._crear_rfid)
+        self.tapa = self._crear("Sensor de la tapa (reed)",
+                                _cfg("USAR_SENSOR_TAPA", False),
+                                self._crear_tapa)
+        self.lazo = self._crear("Cable de sujecion", cfg.USAR_LAZO,
                                 self._crear_lazo)
         self.pir = self._crear("PIR", _cfg("USAR_PIR", False),
                                self._crear_pir)
@@ -83,13 +91,13 @@ class BikeSafe:
                                self._crear_red)
 
         # ---- memoria del programa ----
-        self.estado = LIBRE
+        self.estado = DESARMADO
         self._ultima = {}            # ultima vez que se hizo cada tarea
         self._toques = []            # momentos de los ultimos toques
         self._ultimo_toque_ms = None
         self._inclinada_desde = None
         self._cerca_desde = None
-        self._reed_abierto_desde = None
+        self._tapa_abierta_desde = None
         self._ultima_foto_ms = time.ticks_add(time.ticks_ms(),
                                               -cfg.ESPERA_ENTRE_FOTOS_MS)
         self._alarma_desde = 0
@@ -104,25 +112,31 @@ class BikeSafe:
         self._pir_ms = None          # ultima vez que el PIR vio a alguien
         self._personas_ia = []       # momentos en que la IA vio persona
         self._ultima_ia = None       # (clase, confianza)
+        self._tarjetas_ajenas = []   # momentos de tarjetas desconocidas
+        self._retapar_ms = None      # foto manual estando DESARMADO
         self._n_avisos = 0           # contadores para "Estado"
         self._n_robos = 0
         self._inicio_ms = time.ticks_ms()
         self._wdt = None
 
         # ---- recordar como estaba antes de apagarse ----
-        # Si se va la luz con la bici asegurada, al volver NO debe
-        # abrirse sola. Por eso guardamos el estado en un archivo.
-        if self._leer_estado_guardado() == ASEGURADA:
-            print("Estaba ASEGURADA antes de apagarse: sigo cerrado")
-            self._entrar_asegurada(origen="reinicio", avisar=False)
+        # Si se va la luz mientras vigilaba, al volver SIGUE vigilando
+        # (asi un ladron no lo "apaga" desconectando la pila).
+        if self._leer_estado_guardado() == VIGILANDO:
+            print("Estaba VIGILANDO antes de apagarse: sigo vigilando")
+            self._entrar_vigilando(origen="reinicio", avisar=False)
         else:
-            self.cerrojo.abrir()
-            self._poner_estado(LIBRE)
+            self.obturador.tapar()
+            self._poner_estado(DESARMADO)
         self.buzzer.pitido(1)
-        if cfg.ASEGURAR_AL_ARRANCAR and self.estado == LIBRE:
-            print("Modo prueba: me aseguro solo en 5 segundos...")
+        if _cfg("ARMAR_AL_ARRANCAR", False) and self.estado == DESARMADO:
+            print("Modo prueba: me armo solo en 5 segundos...")
             time.sleep(5)
-            self.asegurar("prueba")
+            self.armar("prueba")
+        if self._fallaron:
+            # Que el dueno sepa que algo no respondio (por ejemplo el RFID)
+            self._telegram("BikeSafe encendio sin: " + ", ".join(self._fallaron)
+                           + "~Sigue funcionando con lo demas y con Telegram.")
         print("=== Listo. Estado:", self.estado, "===\n")
 
     # ===========================================================
@@ -139,6 +153,7 @@ class BikeSafe:
             return pieza
         except Exception as e:
             print(" !", nombre, "NO respondio (", e, "). Sigo sin el.")
+            self._fallaron.append(nombre)
             return None
 
     def _crear_led(self):
@@ -157,9 +172,24 @@ class BikeSafe:
         from hal.sensores import Ultrasonico
         return Ultrasonico(cfg.PIN_TRIG, cfg.PIN_ECHO)
 
-    def _crear_reed(self):
-        from hal.sensores import SensorCerrojo
-        return SensorCerrojo(cfg.PIN_REED, _cfg("REED_CERRADO_ES", 0))
+    def _crear_rfid(self):
+        from hal.sensores import LectorRFID
+        lector = LectorRFID(cfg.PIN_RFID_SCK, cfg.PIN_RFID_MOSI,
+                            cfg.PIN_RFID_MISO, cfg.PIN_RFID_SDA,
+                            cfg.PIN_RFID_RST)
+        version = lector.version()
+        if version in (0x00, 0xFF):
+            raise OSError("el RC522 contesta 0x{:02X}: no hay comunicacion "
+                          "SPI (cables, 3.3 V, soldaduras)".format(version))
+        print("   RC522 version 0x{:02X}".format(version))
+        if not _cfg("TARJETAS_DUENO", []):
+            print("   OJO: TARJETAS_DUENO esta vacia. Pasa tu tarjeta: su")
+            print("   numero saldra aqui; copialo en config.py.")
+        return lector
+
+    def _crear_tapa(self):
+        from hal.sensores import SensorTapa
+        return SensorTapa(cfg.PIN_REED, _cfg("REED_CERRADO_ES", 0))
 
     def _crear_lazo(self):
         from hal.sensores import LazoAntiCorte
@@ -177,7 +207,7 @@ class BikeSafe:
         red = Red(cfg)
         if not _cfg("MQTT_CLAVE", ""):
             print("   OJO: sin MQTT_CLAVE los mensajes no van firmados y")
-            print("   NO se podra abrir el candado por MQTT/dashboard.")
+            print("   NO se podra desarmar desde el dashboard.")
         red.conectar_wifi()
         return red
 
@@ -202,12 +232,12 @@ class BikeSafe:
             with open(ARCHIVO_ESTADO) as f:
                 return f.read().strip()
         except OSError:
-            return LIBRE
+            return DESARMADO
 
     def _luces_del_estado(self):
-        if self.estado == LIBRE:
+        if self.estado == DESARMADO:
             self.luz.parpadear("verde", 800)
-        elif self.estado == ASEGURADA:
+        elif self.estado == VIGILANDO:
             self.luz.fijo("azul")
         else:
             self.luz.parpadear("rojo", 120)
@@ -215,8 +245,8 @@ class BikeSafe:
     def _poner_estado(self, nuevo, origen=""):
         anterior = self.estado
         self.estado = nuevo
-        # En el archivo solo guardamos si el cerrojo esta cerrado o no
-        guardado = LIBRE if nuevo == LIBRE else ASEGURADA
+        # En el archivo solo guardamos si esta vigilando o no
+        guardado = DESARMADO if nuevo == DESARMADO else VIGILANDO
         try:
             if self._leer_estado_guardado() != guardado:
                 with open(ARCHIVO_ESTADO, "w") as f:
@@ -257,13 +287,24 @@ class BikeSafe:
                 < cfg.ESPERA_ENTRE_FOTOS_MS):
             return
         self._ultima_foto_ms = ahora
+        if self.obturador.tapado:
+            # El dueno pidio una foto estando DESARMADO: destapamos un
+            # momento y volvemos a tapar en 6 s.
+            self.obturador.destapar()
+            self._retapar_ms = time.ticks_add(ahora, 6000)
         self.camara.pedir_foto(nivel, motivo)
+
+    @staticmethod
+    def _origen_extra(origen):
+        if origen in ("", "telegram", "tarjeta"):
+            return ""
+        return " (desde {})".format(origen)
 
     # ===========================================================
     #  ACCIONES PRINCIPALES
     # ===========================================================
-    def _entrar_asegurada(self, origen="", avisar=True):
-        self.cerrojo.cerrar()
+    def _entrar_vigilando(self, origen="", avisar=True):
+        self.obturador.destapar()            # la camara ya puede ver
         time.sleep_ms(1200)          # esperar a que todo deje de vibrar
         if self.acel:
             try:
@@ -274,47 +315,48 @@ class BikeSafe:
         self._ultimo_toque_ms = None
         self._inclinada_desde = None
         self._cerca_desde = None
-        self._reed_abierto_desde = None
+        self._tapa_abierta_desde = None
         self._personas_ia = []
+        self._tarjetas_ajenas = []
+        self._retapar_ms = None
         self._lazo_avisado = False
         self._acel_avisado = False
         self.luz.quitar_destello()
-        self._poner_estado(ASEGURADA, origen)
+        self._poner_estado(VIGILANDO, origen)
         if avisar:
-            extra = "" if origen in ("", "telegram") else " (desde {})".format(origen)
-            self._telegram("\U0001F512 BikeSafe: bici ASEGURADA" + extra)
+            self._telegram("\U0001F6E1 BikeSafe: VIGILANDO tu bici" +
+                           self._origen_extra(origen))
 
-    def asegurar(self, origen=""):
-        """Regresa True si se aseguro."""
-        if self.estado != LIBRE:
+    def armar(self, origen=""):
+        """Regresa True si empezo a vigilar."""
+        if self.estado != DESARMADO:
             return False
-        # El sensor magnetico confirma que el cable SI esta metido en el
-        # cerrojo. Si no, no tiene caso cerrar: la bici quedaria suelta.
-        if (self.reed and _cfg("REED_OBLIGATORIO", True)
-                and not self.reed.cerrado()):
+        # Si la caja esta abierta, no tiene caso vigilar: cualquiera
+        # podria desconectar la pila.
+        if self.tapa and not self.tapa.cerrada():
             self.buzzer.pitido(3, 40, 40)
             self.luz.destello("amarillo", 1500)
-            texto = ("\u26D4 BikeSafe: NO cerre. El sensor del cerrojo dice ABIERTO: "
-                     "mete bien el cable en el candado y vuelve a tocar Cerrar.")
+            texto = ("⛔ BikeSafe: NO arme. La tapa de la caja esta "
+                     "ABIERTA: cierrala y vuelve a intentar.")
             print(texto)
             self._telegram(texto)
-            self._evento("cerrojo", "no cerro: cable fuera", origen)
+            self._evento("tapa", "no armo: tapa abierta", origen)
             return False
         self.buzzer.pitido(1)
-        self._entrar_asegurada(origen)
+        self._entrar_vigilando(origen)
         return True
 
-    def liberar(self, origen=""):
-        if self.estado == LIBRE:
+    def desarmar(self, origen=""):
+        if self.estado == DESARMADO:
             return False
         self.buzzer.sirena(False)
         self._rafaga = 0
         self._buscar_hasta = None
-        self.cerrojo.abrir()
-        self._poner_estado(LIBRE, origen)
+        self.obturador.tapar()               # privacidad: ya llego el dueno
+        self._poner_estado(DESARMADO, origen)
         self.buzzer.pitido(2)
-        extra = "" if origen in ("", "telegram") else " (desde {})".format(origen)
-        self._telegram("\U0001F513 BikeSafe: bici LIBERADA" + extra)
+        self._telegram("\U0001F44B BikeSafe: DESARMADO, bienvenido" +
+                       self._origen_extra(origen))
         return True
 
     def aviso(self, motivo, color="amarillo", nivel="AVISO", foto=True):
@@ -343,7 +385,7 @@ class BikeSafe:
         self._rafaga_ms = time.ticks_ms()
 
     def silenciar(self, origen=""):
-        """Calla la sirena pero la bici SIGUE asegurada."""
+        """Calla la sirena pero SIGUE vigilando."""
         if self.estado != ALARMA:
             return False
         self.buzzer.sirena(False)
@@ -356,8 +398,8 @@ class BikeSafe:
                 pass
         self._toques = []
         self._inclinada_desde = None
-        self._reed_abierto_desde = None
-        self._poner_estado(ASEGURADA, origen)
+        self._tapa_abierta_desde = None
+        self._poner_estado(VIGILANDO, origen)
         return True
 
     def buscar(self):
@@ -375,16 +417,16 @@ class BikeSafe:
         """Resumen para el boton "Estado" de Telegram."""
         dist = self.ultra.distancia_cm() if self.ultra else None
         minutos = time.ticks_diff(time.ticks_ms(), self._inicio_ms) // 60000
-        renglones = ["BikeSafe: {}".format(self.estado)]
-        if self.reed:
-            renglones.append("Cerrojo (sensor magnetico): {}".format(
-                self.reed.texto()))
+        renglones = ["BikeSafe: {}".format(self.estado),
+                     "Camara: {}".format(self.obturador.texto())]
+        if self.tapa:
+            renglones.append("Tapa de la caja: {}".format(self.tapa.texto()))
         if self.lazo:
-            renglones.append("Cable: {}".format(
+            renglones.append("Cable de sujecion: {}".format(
                 "CORTADO" if self.lazo.cortado() else "entero"))
         if dist is not None:
             renglones.append("Distancia al frente: {:.0f} cm".format(dist))
-        if self.acel and self.estado != LIBRE:
+        if self.acel and self.estado != DESARMADO:
             renglones.append("Inclinacion: {:.0f} grados".format(self._incl))
         if self.pir:
             renglones.append("Movimiento cerca: {}".format(
@@ -392,6 +434,8 @@ class BikeSafe:
         if self._ultima_ia:
             renglones.append("Ultima IA: {} {:.0f}%".format(
                 self._ultima_ia[0], self._ultima_ia[1] * 100))
+        if self.rfid:
+            renglones.append("Lector RFID: listo")
         if self.red:
             renglones.append("Dashboard (MQTT): {}".format(
                 "conectado" if self.red.conectado() else "sin conexion"))
@@ -402,26 +446,26 @@ class BikeSafe:
         return "\n".join(renglones)
 
     # ===========================================================
-    #  ORDENES DEL DUENO (Telegram por UART, dashboard por MQTT)
+    #  ORDENES DEL DUENO (RFID, Telegram por UART, dashboard por MQTT)
     # ===========================================================
     def ejecutar(self, comando, origen):
         """Un solo lugar para todas las ordenes. Regresa el texto con el
         que hay que contestarle al dueno (o None si ya se aviso)."""
         print("Orden '{}' desde {}".format(comando, origen))
         self._evento("comando", comando, origen)
-        if comando == "asegurar":
-            if self.estado != LIBRE:
-                return "BikeSafe: ya estaba asegurada"
-            self.asegurar(origen)          # ya avisa por Telegram
+        if comando == "armar":
+            if self.estado != DESARMADO:
+                return "BikeSafe: ya estaba vigilando"
+            self.armar(origen)             # ya avisa por Telegram
             return None
-        if comando == "liberar":
-            if self.estado == LIBRE:
-                return "BikeSafe: ya estaba libre"
-            self.liberar(origen)           # ya avisa por Telegram
+        if comando == "desarmar":
+            if self.estado == DESARMADO:
+                return "BikeSafe: ya estaba desarmado"
+            self.desarmar(origen)          # ya avisa por Telegram
             return None
         if comando == "silenciar":
             if self.silenciar(origen):
-                return "\U0001F515 BikeSafe: alarma silenciada, la bici sigue asegurada"
+                return "\U0001F515 BikeSafe: alarma silenciada, sigo vigilando"
             return "BikeSafe: no hay alarma sonando"
         if comando == "estado":
             return self._texto_estado()
@@ -437,10 +481,10 @@ class BikeSafe:
 
     def _comando_actuador(self, comando):
         """Ordenes directas a un actuador (topicos de la Tabla HAL)."""
-        if comando == "servo:cerrar":
-            self.asegurar("dashboard")
-        elif comando == "servo:abrir":
-            self.liberar("dashboard")
+        if comando == "servo:tapar":
+            self.obturador.tapar()
+        elif comando == "servo:destapar":
+            self.obturador.destapar()
         elif comando == "buzzer:pitido":
             self.buzzer.pitido(1)
         elif comando == "buzzer:sirena_off":
@@ -456,6 +500,42 @@ class BikeSafe:
         return None
 
     # ===========================================================
+    #  RFID: solo la tarjeta del dueno arma y desarma
+    # ===========================================================
+    def _revisar_rfid(self, ahora):
+        if not self.rfid or not self._toca("rfid", ahora, 150):
+            return
+        try:
+            uid = self.rfid.leer()
+        except OSError:
+            return
+        if uid is None:
+            return
+        print("Tarjeta:", uid)
+        if uid in _cfg("TARJETAS_DUENO", []):
+            if self.estado == DESARMADO:
+                self.armar("tarjeta")
+            else:
+                self.desarmar("tarjeta")
+            return
+        # Tarjeta que NO es del dueno
+        self._evento("rfid", "tarjeta desconocida " + uid)
+        if self.estado == DESARMADO:
+            self.buzzer.pitido(3, 40, 40)
+            self.luz.destello("rojo", 1000)
+            print("  (no registrada: agregala a TARJETAS_DUENO si es tuya)")
+            return
+        ventana = _cfg("VENTANA_TARJETAS_MS", 60000)
+        self._tarjetas_ajenas = [t for t in self._tarjetas_ajenas
+                                 if time.ticks_diff(ahora, t) < ventana]
+        self._tarjetas_ajenas.append(ahora)
+        if len(self._tarjetas_ajenas) >= _cfg("TARJETAS_PARA_ROBO", 3):
+            self.alarma("Intentos con tarjetas desconocidas")
+        else:
+            self.aviso("Tarjeta desconocida {}".format(uid), color="rojo",
+                       nivel="AVISO")
+
+    # ===========================================================
     #  IA: el servidor solo INFORMA; la decision es de la ESP32
     # ===========================================================
     def _resultado_ia(self, texto, ahora):
@@ -468,8 +548,8 @@ class BikeSafe:
             return
         self._ultima_ia = (clase, conf)
         print("IA dice: {} {:.0f}%".format(clase, conf * 100))
-        if self.estado != ASEGURADA:
-            return                       # libre: no importa / alarma: ya suena
+        if self.estado != VIGILANDO:
+            return                     # desarmado: no importa / alarma: ya suena
         if clase != "persona" or conf < _cfg("IA_CONFIANZA_MINIMA", 0.45):
             return
         ventana = _cfg("IA_VENTANA_MS", 120000)
@@ -580,20 +660,20 @@ class BikeSafe:
                 self._foto("PRESENCIA", "Alguien a {:.0f} cm".format(
                     self._dist))
 
-    def _revisar_cerrojo(self, ahora):
-        """Si el sensor magnetico dice ABIERTO con la bici asegurada,
-        alguien saco el cable o forzo el pasador = ROBO."""
-        if not self.reed or not self._toca("reed", ahora, 100):
+    def _revisar_tapa(self, ahora):
+        """Si abren la caja mientras vigila (para desconectar la pila o
+        arrancar cables) = ROBO."""
+        if not self.tapa or not self._toca("tapa", ahora, 100):
             return
-        if not self.reed.abierto():
-            self._reed_abierto_desde = None
+        if not self.tapa.abierta():
+            self._tapa_abierta_desde = None
             return
-        if self._reed_abierto_desde is None:
-            self._reed_abierto_desde = ahora
-        elif (time.ticks_diff(ahora, self._reed_abierto_desde)
-              >= _cfg("TIEMPO_CERROJO_ABIERTO_MS", 500)):
-            self._reed_abierto_desde = None
-            self.alarma("Cerrojo abierto a la fuerza")
+        if self._tapa_abierta_desde is None:
+            self._tapa_abierta_desde = ahora
+        elif (time.ticks_diff(ahora, self._tapa_abierta_desde)
+              >= _cfg("TIEMPO_TAPA_ABIERTA_MS", 500)):
+            self._tapa_abierta_desde = None
+            self.alarma("Abrieron la caja de BikeSafe")
 
     def _revisar_lazo(self, ahora):
         if not self.lazo or not self._toca("lazo", ahora, 200):
@@ -601,7 +681,7 @@ class BikeSafe:
         if self.lazo.cortado():
             if not self._lazo_avisado:
                 self._lazo_avisado = True
-                self.alarma("Cable cortado")
+                self.alarma("Cable de sujecion cortado")
         else:
             self._lazo_avisado = False
 
@@ -611,7 +691,7 @@ class BikeSafe:
             print("La alarma ya sono suficiente: me callo y sigo vigilando")
             self.silenciar("tiempo")
             self._telegram("BikeSafe: la sirena se apago sola despues de "
-                           "{} s. La bici sigue asegurada.".format(
+                           "{} s. Sigo vigilando.".format(
                                cfg.DURACION_ALARMA_MS // 1000))
 
     def _revisar_rafaga(self, ahora):
@@ -630,6 +710,14 @@ class BikeSafe:
             if self.estado != ALARMA:
                 self.buzzer.sirena(False)
                 self._luces_del_estado()
+
+    def _revisar_obturador(self, ahora):
+        """Despues de una foto manual estando DESARMADO, se vuelve a tapar."""
+        if (self._retapar_ms is not None and
+                time.ticks_diff(ahora, self._retapar_ms) >= 0):
+            self._retapar_ms = None
+            if self.estado == DESARMADO:
+                self.obturador.tapar()
 
     def _revisar_camara(self):
         if not self.camara:
@@ -657,10 +745,10 @@ class BikeSafe:
             tipo, texto = mensaje
             if tipo == "ia":
                 self._resultado_ia(texto, ahora)
-            elif texto in ("liberar", "servo:abrir") and not (
-                    _cfg("PERMITIR_ABRIR_POR_MQTT", True)
+            elif texto == "desarmar" and not (
+                    _cfg("PERMITIR_DESARMAR_POR_MQTT", True)
                     and _cfg("MQTT_CLAVE", "")):
-                print("Abrir por MQTT no permitido (falta MQTT_CLAVE)")
+                print("Desarmar por MQTT no permitido (falta MQTT_CLAVE)")
             else:
                 self.ejecutar(texto, "dashboard")
         if self._toca("publicar", ahora, cfg.PERIODO_PUBLICAR_MS):
@@ -671,9 +759,10 @@ class BikeSafe:
         datos = {"estado": self.estado, "dist": dist,
                  "cambio": round(self._cambio, 2),
                  "incl": round(self._incl, 1),
-                 "luz": self.luz.color_actual}
-        if self.reed:
-            datos["cerrojo"] = self.reed.texto()
+                 "luz": self.luz.color_actual,
+                 "obturador": self.obturador.texto()}
+        if self.tapa:
+            datos["tapa"] = self.tapa.texto()
         if self.lazo:
             datos["lazo"] = "CORTADO" if self.lazo.cortado() else "ENTERO"
         if self.pir:
@@ -684,8 +773,8 @@ class BikeSafe:
             self.red.publicar(b"bikesafe/sensor/distancia", str(dist))
         self.red.publicar(b"bikesafe/sensor/movimiento", str(datos["cambio"]))
         self.red.publicar(b"bikesafe/sensor/inclinacion", str(datos["incl"]))
-        if self.reed:
-            self.red.publicar(b"bikesafe/sensor/cerrojo", datos["cerrojo"])
+        if self.tapa:
+            self.red.publicar(b"bikesafe/sensor/tapa", datos["tapa"])
         if self.lazo:
             self.red.publicar(b"bikesafe/sensor/lazo", datos["lazo"])
 
@@ -695,22 +784,24 @@ class BikeSafe:
     def vuelta(self):
         ahora = time.ticks_ms()
         medi = self._medir_distancia(ahora)
+        self._revisar_rfid(ahora)
 
-        if self.estado == ASEGURADA:
+        if self.estado == VIGILANDO:
             self._revisar_movimiento(ahora)
-        if self.estado == ASEGURADA:        # pudo cambiar a ALARMA arriba
-            self._revisar_cerrojo(ahora)
-        if self.estado == ASEGURADA:
+        if self.estado == VIGILANDO:        # pudo cambiar a ALARMA arriba
+            self._revisar_tapa(ahora)
+        if self.estado == VIGILANDO:
             self._revisar_lazo(ahora)
-        if self.estado == ASEGURADA:
+        if self.estado == VIGILANDO:
             self._revisar_presencia(ahora, medi)
         if self.estado == ALARMA:
             self._revisar_rafaga(ahora)
             self._revisar_fin_alarma(ahora)
-        if self.estado == LIBRE:
+        if self.estado == DESARMADO:
             self._cambio = 0.0
             self._incl = 0.0
         self._revisar_buscar(ahora)
+        self._revisar_obturador(ahora)
 
         self._revisar_camara()
         self._revisar_red(ahora)
@@ -743,7 +834,7 @@ class BikeSafe:
             except KeyboardInterrupt:
                 raise
             except Exception as e:
-                # Un error NO debe tumbar el candado: lo mostramos y seguimos
+                # Un error NO debe tumbar la vigilancia: se muestra y sigue
                 sys.print_exception(e)
                 time.sleep_ms(200)
             time.sleep_ms(10)

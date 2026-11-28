@@ -1,5 +1,5 @@
 # ============================================
-# Proyecto:  BikeSafe - Candado inteligente portatil
+# Proyecto:  BikeSafe - Sistema de vigilancia y alarma para bicicletas
 # Archivo:   pruebas/e03_mpu6050.py
 # Objetivo:  Probar el acelerometro MPU6050 (SDA=GPIO21, SCL=GPIO22)
 # Equipo:    Oscar Sandoval Cabrera (23240457),

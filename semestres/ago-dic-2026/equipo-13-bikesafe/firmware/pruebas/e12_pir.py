@@ -1,5 +1,5 @@
 # ============================================
-# Proyecto:  BikeSafe - Candado inteligente portatil
+# Proyecto:  BikeSafe - Sistema de vigilancia y alarma para bicicletas
 # Archivo:   pruebas/e12_pir.py
 # Objetivo:  Probar el sensor de movimiento PIR HC-SR501 (OUT en D34)
 # Equipo:    Oscar Sandoval Cabrera (23240457),

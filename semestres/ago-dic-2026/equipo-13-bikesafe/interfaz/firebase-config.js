@@ -1,5 +1,5 @@
 // ============================================
-// Proyecto:  BikeSafe - Candado inteligente portatil
+// Proyecto:  BikeSafe - Sistema de vigilancia y alarma para bicicletas
 // Archivo:   interfaz/firebase-config.js
 // Objetivo:  Datos de conexion del dashboard con su proyecto de Firebase
 // Equipo:    Oscar Sandoval Cabrera (23240457),

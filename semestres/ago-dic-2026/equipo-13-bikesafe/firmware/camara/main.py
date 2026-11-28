@@ -1,5 +1,5 @@
 # ============================================
-# Proyecto:  BikeSafe - Candado inteligente portatil
+# Proyecto:  BikeSafe - Sistema de vigilancia y alarma para bicicletas
 # Archivo:   main.py   (va en la FREENOVE ESP32-WROVER con camara)
 # Objetivo:  Esperar ordenes de la ESP32 normal por el cable serie;
 #            cuando llega "FOTO" toma la foto, la guarda y la manda
@@ -14,18 +14,23 @@
 #
 #   Llega por el cable:            Lo que hace:
 #   FOTO|ROBO|Forcejeo continuo -> foto + Telegram con ese texto
-#   MSG|BikeSafe: bici ASEGURADA -> solo manda el texto
+#   MSG|BikeSafe: VIGILANDO      -> solo manda el texto
 #
 #   Ademas revisa el chat del bot cada pocos segundos. El dueno toca
-#   los botones Cerrar, Abrir, Silenciar o Estado (o los escribe, con
-#   o sin "/"), y se lo pasa a la ESP32 normal como "CMD|asegurar"
-#   (ella es la que decide). "Foto" la resuelve la Freenove sola.
+#   los botones Armar, Desarmar, Foto, Estado, Buscar o Silenciar (o
+#   los escribe, con o sin "/"), y se lo pasa a la ESP32 normal como
+#   "CMD|armar" (ella es la que decide). Hasta "Foto" pasa por la ESP32,
+#   porque primero tiene que destapar el obturador de la camara.
 #
 #   Y contesta:  OK|FOTO|telegram   /  OK|FOTO|guardada  /  ERR|...
 #
-# Ademas, cada foto se publica por MQTT para el servidor de IA:
-#   bikesafe/cam/info   -> {"nivel": "ROBO", "motivo": "...", "n": 7}
-#   bikesafe/cam/frame  -> la foto en JPEG (bytes)
+# Ademas, cada foto se publica por MQTT para el servidor de IA, pero
+# CIFRADA (AES-256 + HMAC, ver cifrado.py): el broker es publico y sin
+# cifrar cualquiera que se suscriba veria las fotos de las personas.
+#   bikesafe/cam/info   -> {"nivel": "ROBO", "motivo": "...", "n": 7} cifrado
+#   bikesafe/cam/frame  -> la foto JPEG cifrada
+# Si esta placa no puede cifrar (falta MQTT_CLAVE o cryptolib), la
+# foto NO se manda al servidor (privacidad primero); Telegram sigue.
 # El servidor NO le contesta a esta placa: le manda el resultado de la
 # IA a la ESP32 normal, que es la que decide si es para alarmarse.
 #
@@ -46,6 +51,7 @@ from machine import Pin, UART
 
 import config as cfg
 import telegram
+import cifrado
 
 try:
     from umqtt.simple import MQTTClient
@@ -180,7 +186,7 @@ class Fotografo:
         if cfg.USAR_WEB:
             self._abrir_web()
         self._bot_desde = 0
-        self._confirmar_hasta = None   # esperando "Si, abrir"
+        self._confirmar_hasta = None   # esperando "Si, desarmar"
         self._intrusos = []            # chats ajenos que ya se reportaron
         self._pendientes = []          # alertas que no salieron por falta de internet
         self._reintento_ms = 0
@@ -348,10 +354,16 @@ class Fotografo:
                 self.mqtt = None
 
     def publicar_frame(self, jpg, nivel, motivo):
-        """Manda la foto al servidor Python (IA) por MQTT. Si la
+        """Manda la foto CIFRADA al servidor Python (IA) por MQTT. Si la
         conexion estaba caida, reconecta y lo intenta una vez mas."""
-        info = json.dumps({"nivel": nivel, "motivo": motivo,
-                           "n": self._numero})
+        clave = getattr(cfg, "MQTT_CLAVE", "")
+        if not (clave and cifrado.disponible()):
+            print("MQTT: no mando la foto al servidor (sin MQTT_CLAVE o "
+                  "sin cryptolib: no se puede cifrar)")
+            return False
+        info = cifrado.cifrar(clave, json.dumps(
+            {"nivel": nivel, "motivo": motivo, "n": self._numero}))
+        jpg = cifrado.cifrar(clave, jpg)
         for intento in (1, 2):
             if not self._conectar_mqtt(ya=(intento == 2)):
                 return False
@@ -461,21 +473,23 @@ class Fotografo:
 
     # ---------- comandos del bot de Telegram ----------
     AYUDA = ("BikeSafe - usa los botones de abajo:\n"
-             "Cerrar - asegura la bici\n"
-             "Abrir - libera la bici (pide confirmar)\n"
+             "Armar - empieza a vigilar tu bici\n"
+             "Desarmar - deja de vigilar (pide confirmar)\n"
              "Foto - foto de la bici ahora\n"
-             "Estado - como esta el candado\n"
+             "Estado - como esta el sistema\n"
              "Buscar - suena para encontrar tu bici\n"
-             "Silenciar - calla la alarma (sigue asegurada)")
+             "Silenciar - calla la alarma (sigue vigilando)\n"
+             "Tambien puedes armar y desarmar con tu tarjeta RFID.")
 
     # Palabras que entiende (con o sin "/", mayusculas o minusculas)
-    PASAR_A_ESP32 = {"cerrar": "asegurar", "asegurar": "asegurar",
+    PASAR_A_ESP32 = {"armar": "armar", "vigilar": "armar",
                      "silenciar": "silenciar", "callar": "silenciar",
-                     "estado": "estado", "buscar": "buscar"}
+                     "estado": "estado", "buscar": "buscar",
+                     "foto": "foto"}
 
     @staticmethod
     def _limpiar_comando(texto):
-        """'/Cerrar@BikeSafe_bot' o 'cerrar ya' -> 'cerrar'."""
+        """'/Armar@BikeSafe_bot' o 'armar ya' -> 'armar'."""
         palabra = texto.strip().split()[0] if texto.strip() else ""
         palabra = palabra.split("@")[0].lstrip("/").lower()
         for a, b in (("\u00e1", "a"), ("\u00e9", "e"), ("\u00ed", "i"),
@@ -521,21 +535,18 @@ class Fotografo:
             esperando = (self._confirmar_hasta is not None and
                          time.ticks_diff(self._confirmar_hasta, ahora) > 0)
             self._confirmar_hasta = None
-            if comando in ("abrir", "liberar"):
-                # Pedir confirmacion para no abrirla por accidente
+            if comando == "desarmar":
+                # Pedir confirmacion para no desarmar por accidente
                 self._confirmar_hasta = time.ticks_add(ahora, 30000)
-                self.enviar_texto("Seguro que quieres ABRIR el candado?",
+                self.enviar_texto("Seguro que quieres DESARMAR la vigilancia?",
                                   botones="confirmar")
             elif comando == "si" and esperando:
-                self.responder("CMD|liberar")
-                self.enviar_texto("Abriendo...", botones=True)
+                self.responder("CMD|desarmar")
+                self.enviar_texto("Desarmando...", botones=True)
             elif comando == "no" or comando == "si":
-                self.enviar_texto("Ok, no se abre. Sigue como estaba.",
-                                  botones=True)
+                self.enviar_texto("Ok, sigue como estaba.", botones=True)
             elif comando in self.PASAR_A_ESP32:
                 self.responder("CMD|" + self.PASAR_A_ESP32[comando])
-            elif comando == "foto":
-                self.tomar_y_enviar("FOTO", "Foto pedida desde Telegram")
             else:
                 self.enviar_texto(self.AYUDA, botones=True)
 

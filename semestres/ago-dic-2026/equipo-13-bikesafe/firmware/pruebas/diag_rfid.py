@@ -1,5 +1,5 @@
 # ============================================
-# Proyecto:  BikeSafe - Candado inteligente portatil
+# Proyecto:  BikeSafe - Sistema de vigilancia y alarma para bicicletas
 # Archivo:   pruebas/diag_rfid.py
 # Objetivo:  Diagnostico automatico del lector RFID RC522: prueba
 #            velocidades, buses SPI y MISO/MOSI cruzados, y revisa
@@ -89,6 +89,6 @@ for nombre, crear in combos:
 print("\n===== RESULTADO =====")
 if exito:
     print("EL LECTOR FUNCIONA con:", exito)
-    print("Manden captura a Claude para ajustar el codigo del candado.")
+    print("Manden captura de lo que salio para ajustar el codigo.")
 else:
     print("Ninguna combinacion funciono. Manden captura de todo esto a Claude.")

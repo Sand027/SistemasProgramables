@@ -1,5 +1,5 @@
 # ============================================
-# Proyecto:  BikeSafe - Candado inteligente portatil
+# Proyecto:  BikeSafe - Sistema de vigilancia y alarma para bicicletas
 # Archivo:   lib/mfrc522.py
 # Objetivo:  Driver minimo del lector RFID RC522 (chip MFRC522)
 #            por SPI: detecta una tarjeta y lee su numero (UID)

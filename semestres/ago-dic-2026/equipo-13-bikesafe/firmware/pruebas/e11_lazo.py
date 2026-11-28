@@ -1,5 +1,5 @@
 # ============================================
-# Proyecto:  BikeSafe - Candado inteligente portatil
+# Proyecto:  BikeSafe - Sistema de vigilancia y alarma para bicicletas
 # Archivo:   pruebas/e11_lazo.py
 # Objetivo:  Probar el lazo anti-corte (un cable de GPIO14 a GND)
 # Equipo:    Oscar Sandoval Cabrera (23240457),

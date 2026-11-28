@@ -1,7 +1,8 @@
 # ============================================
-# Proyecto:  BikeSafe - Candado inteligente portatil
+# Proyecto:  BikeSafe - Sistema de vigilancia y alarma para bicicletas
 # Archivo:   pruebas/e02_servo.py
-# Objetivo:  Probar el servomotor SG90 (GPIO13) y encontrar los angulos de abierto y cerrado
+# Objetivo:  Probar el servomotor SG90 (GPIO13) del obturador de la camara
+#            y encontrar los angulos de tapado y destapado
 # Equipo:    Oscar Sandoval Cabrera (23240457),
 #            Diego Josue Talamantes Santiago (23240355)
 # Materia:   Sistemas Programables - ISC TecNM Leon
@@ -9,9 +10,9 @@
 # ============================================
 #
 # QUE DEBES VER: el brazo va a 0, 90 y 180 grados y regresa.
-# Despues te deja escribir angulos a mano para encontrar en cual
-# queda ABIERTO y en cual CERRADO tu pestillo. Apuntalos en
-# config.py (SERVO_ABIERTO y SERVO_CERRADO).
+# Despues te deja escribir angulos a mano para encontrar en cual la
+# tapita CUBRE la ventana de la camara y en cual la DESCUBRE.
+# Apuntalos en config.py (SERVO_TAPADO y SERVO_DESTAPADO).
 #
 # Si la ESP32 se reinicia cuando se mueve el servo: falta el
 # capacitor de 1000 uF en el riel de 5 V, o el servo esta

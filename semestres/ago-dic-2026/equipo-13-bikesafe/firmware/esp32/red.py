@@ -1,5 +1,5 @@
 # ============================================
-# Proyecto:  BikeSafe - Candado inteligente portatil
+# Proyecto:  BikeSafe - Sistema de vigilancia y alarma para bicicletas
 # Archivo:   red.py
 # Objetivo:  Conectar la ESP32 al WiFi y al broker MQTT para publicar
 #            sensores/eventos y recibir comandos FIRMADOS
@@ -12,7 +12,7 @@
 # Topicos (los "canales" de MQTT) que usa BikeSafe:
 #
 #   ESP32 -> broker
-#   bikesafe/estado              LIBRE / ASEGURADA / ALARMA (retenido)
+#   bikesafe/estado              DESARMADO / VIGILANDO / ALARMA (retenido)
 #   bikesafe/conexion            online / offline (retenido; "offline"
 #                                lo publica el broker solo si la ESP32
 #                                se desconecta: "ultima voluntad")
@@ -20,21 +20,21 @@
 #   bikesafe/sensor/distancia    cm del HC-SR04
 #   bikesafe/sensor/movimiento   cambio en g del MPU6050
 #   bikesafe/sensor/inclinacion  grados del MPU6050
-#   bikesafe/sensor/cerrojo      CERRADO / ABIERTO (reed switch)
-#   bikesafe/sensor/lazo         ENTERO / CORTADO
+#   bikesafe/sensor/tapa         CERRADA / ABIERTA (reed de la caja)
+#   bikesafe/sensor/lazo         ENTERO / CORTADO (cable de sujecion)
 #   bikesafe/alerta              texto de cada aviso o alarma
 #   bikesafe/evento              JSON de cada cosa que pasa (historial)
 #   bikesafe/camara              lo que contesta la placa de la camara
 #
 #   broker -> ESP32 (todos FIRMADOS, ver firma.py)
-#   bikesafe/cmd                 asegurar / liberar / silenciar / foto / buscar
-#   bikesafe/servo/cmd           cerrar / abrir
+#   bikesafe/cmd                 armar / desarmar / silenciar / foto / buscar
+#   bikesafe/servo/cmd           tapar / destapar (obturador de la camara)
 #   bikesafe/buzzer/cmd          pitido / sirena_off
 #   bikesafe/led/cmd             alerta / normal / <color>
 #   bikesafe/ia/resultado        lo que vio la IA: {"clase", "conf", ...}
 #                                (la ESP32 DECIDE que hacer con eso)
 #
-# IMPORTANTE: si no hay WiFi o no hay broker, el candado sigue
+# IMPORTANTE: si no hay WiFi o no hay broker, la vigilancia sigue
 # funcionando igual. La red es un extra, no una dependencia.
 
 import time
@@ -193,7 +193,7 @@ class Red:
                        port=self._cfg.MQTT_PUERTO, keepalive=30)
         # "Ultima voluntad": si la ESP32 se apaga o pierde el WiFi, el
         # broker publica "offline" por ella. Asi el dashboard sabe que
-        # el candado se desconecto aunque ya no pueda avisar.
+        # la ESP32 se desconecto aunque ya no pueda avisar.
         c.set_last_will(T_CONEXION, b"offline", retain=True)
         c.set_callback(self._al_recibir)
         try:
@@ -252,6 +252,6 @@ class Red:
             self._cliente = None
 
     def siguiente(self):
-        """Siguiente mensaje recibido: ("cmd", "liberar"),
+        """Siguiente mensaje recibido: ("cmd", "desarmar"),
         ("ia", '{"clase": "persona", ...}') o None."""
         return self._entrada.pop(0) if self._entrada else None

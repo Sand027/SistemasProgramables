@@ -1,5 +1,5 @@
 # ============================================
-# Proyecto:  BikeSafe - Candado inteligente portatil
+# Proyecto:  BikeSafe - Sistema de vigilancia y alarma para bicicletas
 # Archivo:   servidor/probar_ia.py
 # Objetivo:  Probar la IA con fotos guardadas, sin MQTT ni placas
 # Equipo:    Oscar Sandoval Cabrera (23240457),

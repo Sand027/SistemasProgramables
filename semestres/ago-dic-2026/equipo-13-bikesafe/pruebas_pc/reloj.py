@@ -1,5 +1,5 @@
 # ============================================
-# Proyecto:  BikeSafe - Candado inteligente portatil
+# Proyecto:  BikeSafe - Sistema de vigilancia y alarma para bicicletas
 # Archivo:   pruebas_pc/reloj.py
 # Objetivo:  Reloj virtual (ticks_ms, sleep_ms) para correr el firmware rapido
 # Equipo:    Oscar Sandoval Cabrera (23240457),

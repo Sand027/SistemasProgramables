@@ -1,5 +1,5 @@
 # ============================================
-# Proyecto:  BikeSafe - Candado inteligente portatil
+# Proyecto:  BikeSafe - Sistema de vigilancia y alarma para bicicletas
 # Archivo:   config.example.py   (va en la FREENOVE, la placa de la camara)
 # Objetivo:  Datos del WiFi, del bot de Telegram y ajustes de la foto
 # Equipo:    Oscar Sandoval Cabrera (23240457),
@@ -40,15 +40,16 @@ PIN_RX = 33      # <- llega del TX2 (GPIO17) de la ESP32 normal
 PIN_TX = 32      # -> va al RX2 (GPIO16) de la ESP32 normal
 
 # ---------------- Pagina web ----------------
-# Si esta en True, puedes ver una foto en vivo escribiendo la IP
-# de la Freenove en el navegador del celular (misma red WiFi).
-USAR_WEB = True
+# Si esta en True, cualquiera en la misma red WiFi puede ver la camara
+# escribiendo la IP de la Freenove en el navegador. Por PRIVACIDAD
+# viene apagado; solo prendanlo para acomodar la camara.
+USAR_WEB = False
 
 # LED azul integrado de la Freenove (GPIO2): destella al tomar foto
 PIN_LED = 2
 
 # Cada cuantos segundos revisa si le escribieron al bot
-# (botones Cerrar, Abrir, Foto, Estado, Buscar, Silenciar)
+# (botones Armar, Desarmar, Foto, Estado, Buscar, Silenciar)
 REVISAR_BOT_CADA_S = 3
 
 # Reinicio automatico si algo se traba (watchdog). True SOLO para la
@@ -64,3 +65,7 @@ USAR_MQTT = True
 MQTT_BROKER = "broker.hivemq.com"   # el mismo que en la ESP32 normal
 MQTT_PUERTO = 1883
 MQTT_CLIENTE = "bikesafe-cam"
+# Clave para CIFRAR las fotos antes de mandarlas por el broker publico.
+# Debe ser IGUAL a MQTT_CLAVE de la ESP32 y a servidor/clave_mqtt.txt.
+# Sin clave, las fotos NO se mandan al servidor (solo a Telegram).
+MQTT_CLAVE = ""

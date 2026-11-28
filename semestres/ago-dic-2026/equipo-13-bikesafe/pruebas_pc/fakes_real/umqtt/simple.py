@@ -1,5 +1,5 @@
 # ============================================
-# Proyecto:  BikeSafe - Candado inteligente portatil
+# Proyecto:  BikeSafe - Sistema de vigilancia y alarma para bicicletas
 # Archivo:   pruebas_pc/fakes_real/umqtt/simple.py
 # Objetivo:  umqtt.simple de prueba conectado a un broker MQTT real con paho
 # Equipo:    Oscar Sandoval Cabrera (23240457),

@@ -1,5 +1,5 @@
 # ============================================
-# Proyecto:  BikeSafe - Candado inteligente portatil
+# Proyecto:  BikeSafe - Sistema de vigilancia y alarma para bicicletas
 # Archivo:   pruebas/e05_enlace.py
 # Objetivo:  Probar el cable serie entre la ESP32 normal y la Freenove (se corre en la ESP32 NORMAL)
 # Equipo:    Oscar Sandoval Cabrera (23240457),

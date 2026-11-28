@@ -1,5 +1,5 @@
 # ============================================
-# Proyecto:  BikeSafe - Candado inteligente portatil
+# Proyecto:  BikeSafe - Sistema de vigilancia y alarma para bicicletas
 # Archivo:   pruebas_pc/fakes_cam/camera.py
 # Objetivo:  Falso de la camara de la Freenove
 # Equipo:    Oscar Sandoval Cabrera (23240457),

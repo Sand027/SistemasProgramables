@@ -1,9 +1,10 @@
 # ============================================
-# Proyecto:  BikeSafe - Candado inteligente portatil
+# Proyecto:  BikeSafe - Sistema de vigilancia y alarma para bicicletas
 # Archivo:   hal/sensores.py
 # Objetivo:  Una clase por cada sensor (acelerometro, ultrasonico,
-#            interruptor magnetico del cerrojo, lazo anti-corte y PIR)
-#            para que main.py solo pregunte "que esta pasando"
+#            lector RFID, interruptor magnetico de la tapa, cable de
+#            sujecion y PIR) para que main.py solo pregunte
+#            "que esta pasando"
 # Equipo:    Oscar Sandoval Cabrera (23240457),
 #            Diego Josue Talamantes Santiago (23240355)
 # Materia:   Sistemas Programables - ISC TecNM Leon
@@ -17,9 +18,9 @@
 # Los 3 sensores del proyecto:
 #   1. Acelerometro MPU6050   -> toques, forcejeo e inclinacion
 #   2. Ultrasonico HC-SR04    -> alguien parado junto a la bici
-#   3. Interruptor magnetico  -> el cerrojo de verdad esta cerrado
-#      (reed switch)             o lo abrieron a la fuerza
-# Extras: lazo anti-corte (cable que se rompe) y PIR opcional.
+#   3. Lector RFID RC522      -> reconoce la tarjeta del DUENO
+# Extras: reed switch (abrieron la caja), cable de sujecion anti-corte
+# y PIR opcional.
 
 import math
 import time
@@ -42,7 +43,7 @@ def _estable(pin, valor, veces=3, espera_ms=2):
 class Acelerometro:
     """Detecta si mueven o inclinan la bici.
 
-    Idea: al asegurar la bici guardamos "hacia donde apunta la
+    Idea: al empezar a vigilar guardamos "hacia donde apunta la
     gravedad" (la referencia). Despues comparamos cada lectura
     contra esa referencia:
       - cambio():      cuanto cambio la aceleracion (en g)
@@ -99,7 +100,7 @@ class Acelerometro:
         return (sx / muestras, sy / muestras, sz / muestras)
 
     def guardar_referencia(self):
-        """Llamar cuando la bici ya esta quieta y asegurada."""
+        """Llamar cuando la bici ya esta quieta y el sistema empieza a vigilar."""
         self._ref = self.promedio()
         return self._ref
 
@@ -164,41 +165,82 @@ class Ultrasonico:
 
 
 # ---------------------------------------------------------------
-#  3. INTERRUPTOR MAGNETICO DEL CERROJO (reed switch)
+#  3. LECTOR RFID RC522 (reconoce al dueno)
 # ---------------------------------------------------------------
-class SensorCerrojo:
-    """Un reed switch es un interruptor que se cierra cuando le
-    acercas un iman. El reed va pegado por dentro de la carcasa, junto
-    al orificio del pasador, y el iman va en la punta del cable de
-    acero (o en el pasador que mueve el servo).
+class LectorRFID:
+    """Lee el numero (UID) de la tarjeta o llavero que se acerque.
+    main.py compara ese numero contra TARJETAS_DUENO de config.py.
 
-      iman cerca  (cable metido / pasador cerrado) -> contacto cerrado
-      iman lejos  (cable fuera  / pasador abierto) -> contacto abierto
-
-    Conexion: una patita del reed al pin, la otra a GND. Usamos la
-    resistencia interna (pull-up): contacto cerrado = 0, abierto = 1.
+    Conexion (bus SPI por hardware de la ESP32):
+        SDA(CS) -> D5   SCK -> D18   MOSI -> D23   MISO -> D19
+        RST -> D4       3.3V -> 3V3 (NUNCA a 5 V)   GND -> GND
     """
 
-    def __init__(self, pin, cerrado_es=0):
+    def __init__(self, sck, mosi, miso, sda, rst):
+        from mfrc522 import MFRC522
+        self._chip = MFRC522(sck=sck, mosi=mosi, miso=miso, rst=rst, cs=sda)
+        self._ultimo_uid = None
+        self._ultimo_ms = 0
+
+    def version(self):
+        return self._chip.version()
+
+    def conectado(self):
+        """True si el chip contesta (0x00 o 0xFF = no hay comunicacion
+        por SPI: revisar cables, 3.3 V y soldaduras)."""
+        return self.version() not in (0x00, 0xFF)
+
+    def leer(self, ignorar_repetida_ms=2500):
+        """Regresa el UID ("A1B2C3D4") solo UNA vez por pasada.
+        Si dejas la tarjeta pegada, no la repite hasta que pasen
+        'ignorar_repetida_ms' (asi no arma y desarma como loco)."""
+        uid = self._chip.leer_uid()
+        if uid is None:
+            return None
+        ahora = time.ticks_ms()
+        repetida = (uid == self._ultimo_uid and
+                    time.ticks_diff(ahora, self._ultimo_ms) < ignorar_repetida_ms)
+        self._ultimo_uid = uid
+        self._ultimo_ms = ahora
+        return None if repetida else uid
+
+
+# ---------------------------------------------------------------
+#  INTERRUPTOR MAGNETICO DE LA TAPA (reed switch, extra)
+# ---------------------------------------------------------------
+class SensorTapa:
+    """Un reed switch es un interruptor que se cierra cuando le acercas
+    un iman. El reed va pegado en la pared de la caja y el iman en la
+    tapa: si alguien abre la caja para desconectar la pila o arrancar
+    los cables, el sistema lo sabe.
+
+      tapa cerrada (iman cerca) -> contacto cerrado -> pin en 0
+      tapa abierta (iman lejos) -> contacto abierto -> pin en 1
+
+    Conexion: una patita del reed al pin, la otra a GND. Usamos la
+    resistencia interna (pull-up), no lleva resistencia externa.
+    """
+
+    def __init__(self, pin, cerrada_es=0):
         self._pin = Pin(pin, Pin.IN, Pin.PULL_UP)
-        self._cerrado_es = cerrado_es
+        self._cerrada_es = cerrada_es
 
-    def cerrado(self):
-        return _estable(self._pin, self._cerrado_es)
+    def cerrada(self):
+        return _estable(self._pin, self._cerrada_es)
 
-    def abierto(self):
-        return _estable(self._pin, 1 - self._cerrado_es)
+    def abierta(self):
+        return _estable(self._pin, 1 - self._cerrada_es)
 
     def texto(self):
-        return "CERRADO" if self._pin.value() == self._cerrado_es else "ABIERTO"
+        return "CERRADA" if self._pin.value() == self._cerrada_es else "ABIERTA"
 
 
 # ---------------------------------------------------------------
-#  LAZO ANTI-CORTE (extra)
+#  CABLE DE SUJECION ANTI-CORTE (extra)
 # ---------------------------------------------------------------
 class LazoAntiCorte:
-    """Un cable que sale del pin, recorre el cable de acero y
-    regresa a GND. Mientras este entero, el pin lee 0. Si lo
+    """Un cable delgado que sale del pin, va junto al cable con el que
+    la caja se amarra a la bici y al estacionamiento, y regresa a GND. Mientras este entero, el pin lee 0. Si lo
     cortan, la resistencia interna (pull-up) sube el pin a 1."""
 
     def __init__(self, pin):

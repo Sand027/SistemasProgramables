@@ -1,5 +1,5 @@
 # ============================================
-# Proyecto:  BikeSafe - Candado inteligente portatil
+# Proyecto:  BikeSafe - Sistema de vigilancia y alarma para bicicletas
 # Archivo:   pruebas/e07_leds.py
 # Objetivo:  Probar los LEDs verde (GPIO32) y rojo (GPIO33)
 # Equipo:    Oscar Sandoval Cabrera (23240457),

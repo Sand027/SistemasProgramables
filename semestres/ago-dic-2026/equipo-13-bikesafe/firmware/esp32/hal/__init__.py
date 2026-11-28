@@ -1,5 +1,5 @@
 # ============================================
-# Proyecto:  BikeSafe - Candado inteligente portatil
+# Proyecto:  BikeSafe - Sistema de vigilancia y alarma para bicicletas
 # Archivo:   hal/__init__.py
 # Objetivo:  Marca la carpeta hal (capa de abstraccion de hardware) como paquete
 # Equipo:    Oscar Sandoval Cabrera (23240457),

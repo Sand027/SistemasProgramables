@@ -1,8 +1,8 @@
 # ============================================
-# Proyecto:  BikeSafe - Candado inteligente portatil
+# Proyecto:  BikeSafe - Sistema de vigilancia y alarma para bicicletas
 # Archivo:   servidor/ia/detector.py
 # Objetivo:  Detectar PERSONAS (cuerpo completo o en parte) en la foto
-#            del candado con una red neuronal YOLOv5 entrenada en COCO
+#            de BikeSafe con una red neuronal YOLOv5 entrenada en COCO
 # Equipo:    Oscar Sandoval Cabrera (23240457),
 #            Diego Josue Talamantes Santiago (23240355)
 # Materia:   Sistemas Programables - ISC TecNM Leon
@@ -18,7 +18,7 @@
 # - Corre con cv2.dnn (viene en OpenCV, no hay que instalar PyTorch).
 #   Funciona en OpenCV 4.8+ y en OpenCV 5 (que ya no lee modelos Caffe
 #   como MobileNet-SSD; por eso elegimos YOLO en formato ONNX).
-# - La camara va dentro del candado viendo hacia arriba por la ventana
+# - La camara va dentro de la caja viendo hacia arriba por la ventana
 #   de la tapa, asi que la foto llega girada: la probamos a 0, 90, 180
 #   y 270 grados y nos quedamos con el mejor resultado.
 #

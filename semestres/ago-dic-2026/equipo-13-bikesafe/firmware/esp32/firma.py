@@ -1,8 +1,9 @@
 # ============================================
-# Proyecto:  BikeSafe - Candado inteligente portatil
+# Proyecto:  BikeSafe - Sistema de vigilancia y alarma para bicicletas
 # Archivo:   firma.py   (ESP32 normal; el servidor usa una copia igual)
 # Objetivo:  Firmar y comprobar los mensajes MQTT con HMAC-SHA256 para
-#            que nadie mas pueda abrir el candado desde el broker publico
+#            que nadie mas pueda desarmar la vigilancia desde el broker
+#            publico, y cifrar las fotos (privacidad)
 # Equipo:    Oscar Sandoval Cabrera (23240457),
 #            Diego Josue Talamantes Santiago (23240355)
 # Materia:   Sistemas Programables - ISC TecNM Leon
@@ -10,15 +11,15 @@
 # ============================================
 #
 # PROBLEMA: broker.hivemq.com es publico. Cualquiera en internet que
-# sepa el topico podria publicar "liberar" en bikesafe/cmd y abrir el
-# candado.
+# sepa el topico podria publicar "desarmar" en bikesafe/cmd y apagar
+# la vigilancia.
 #
 # SOLUCION: el servidor y la ESP32 comparten una CLAVE secreta (que no
 # viaja por la red). Cada mensaje va asi:
 #
-#     liberar|1795631062430|9f2c4b1a7e3d5c60
+#     desarmar|1795631062430|9f2c4b1a7e3d5c60
 #     ------- ------------- ----------------
-#     orden   contador      firma = HMAC-SHA256(clave, "liberar|1795...")
+#     orden    contador      firma = HMAC-SHA256(clave, "desarmar|1795...")
 #
 #   - Sin la clave no se puede calcular la firma -> mensaje rechazado.
 #   - El contador siempre crece: si alguien graba un mensaje viejo y lo
@@ -59,7 +60,7 @@ def firma_corta(clave, texto):
 
 
 def firmar(clave, texto, contador):
-    """'liberar' -> 'liberar|contador|firma'."""
+    """'desarmar' -> 'desarmar|contador|firma'."""
     base = "{}|{}".format(texto, contador)
     return "{}|{}".format(base, firma_corta(clave, base))
 

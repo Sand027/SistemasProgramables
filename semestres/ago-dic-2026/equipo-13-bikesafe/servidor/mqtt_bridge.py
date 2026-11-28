@@ -1,5 +1,5 @@
 # ============================================
-# Proyecto:  BikeSafe - Candado inteligente portatil
+# Proyecto:  BikeSafe - Sistema de vigilancia y alarma para bicicletas
 # Archivo:   servidor/mqtt_bridge.py
 # Objetivo:  Servidor central: recibe sensores, eventos y fotos por MQTT,
 #            la IA detecta personas y le INFORMA a la ESP32, guarda todo
@@ -12,7 +12,8 @@
 #
 # Flujo:
 #
-#   Freenove --bikesafe/cam/frame--> este servidor
+#   Freenove --bikesafe/cam/frame (CIFRADA)--> este servidor
+#       descifra y comprueba la firma (cifrado.py); si no cuadra, la tira
 #       YOLOv5 (OpenCV dnn): ¿cuantas personas hay y con que confianza?
 #       publica el RESULTADO firmado en bikesafe/ia/resultado
 #           -> la ESP32 decide si es aviso, robo o nada
@@ -24,7 +25,7 @@
 #       --bikesafe/cmd firmado--> ESP32
 #
 # El servidor YA NO le ordena nada a los actuadores por su cuenta: si la
-# laptop se apaga, el candado sigue protegiendo la bici igual.
+# laptop se apaga, la vigilancia sigue funcionando igual.
 #
 # Como correrlo (o doble clic en INICIAR_DEMO.bat):
 #   pip install -r requirements.txt
@@ -44,9 +45,12 @@ import config as cfg
 from ia.detector import DetectorPersonas
 from nube import Nube
 
-# firma.py es el MISMO archivo que usa la ESP32 (una sola copia)
+# firma.py y cifrado.py son los MISMOS archivos que usan las placas
+# (una sola copia de cada uno)
 sys.path.append(os.path.join(cfg.AQUI, "..", "firmware", "esp32"))
+sys.path.append(os.path.join(cfg.AQUI, "..", "firmware", "camara"))
 import firma  # noqa: E402
+import cifrado  # noqa: E402
 
 T_TODO = "bikesafe/#"
 T_FRAME = "bikesafe/cam/frame"
@@ -57,8 +61,8 @@ T_CONEXION = "bikesafe/conexion"
 
 # Lo que el dashboard puede pedir -> (topico, mensaje) para la ESP32
 COMANDOS = {
-    "asegurar": (T_CMD, "asegurar"),
-    "liberar": (T_CMD, "liberar"),
+    "armar": (T_CMD, "armar"),
+    "desarmar": (T_CMD, "desarmar"),
     "silenciar": (T_CMD, "silenciar"),
     "foto": (T_CMD, "foto"),
     "buscar": (T_CMD, "buscar"),
@@ -78,19 +82,24 @@ class Servidor:
         print("[ia] Detector de personas listo ({}), reporta desde {:.0f}%"
               .format(self.detector.nombre, cfg.CONFIANZA_MINIMA * 100))
         if cfg.MQTT_CLAVE:
-            print("[seguridad] Mensajes a la ESP32 FIRMADOS (HMAC-SHA256)")
+            print("[seguridad] Mensajes a la ESP32 FIRMADOS (HMAC-SHA256) y "
+                  "fotos CIFRADAS (AES-256)")
+            if not cifrado.disponible():
+                print("[seguridad] FALTA la libreria 'cryptography': "
+                      "pip install -r requirements.txt")
         else:
             print("[seguridad] OJO: falta servidor/clave_mqtt.txt. Los mensajes "
-                  "van sin firma y la ESP32 rechazara 'liberar'.")
+                  "van sin firma y la ESP32 rechazara 'desarmar'.")
         self.nube = Nube(cfg.FIREBASE_LLAVE, cfg.CARPETA_REGISTROS)
         os.makedirs(cfg.CARPETA_CAPTURAS, exist_ok=True)
         self.lectura = {"estado": None, "distancia": None, "movimiento": None,
-                        "inclinacion": None, "cerrojo": None, "lazo": None,
+                        "inclinacion": None, "tapa": None, "obturador": None,
+                        "lazo": None,
                         "luz": None}
         self.info_foto = {"nivel": "?", "motivo": "", "n": 0}
         self._ultima_lectura = 0.0
         self._contador = 0
-        self._candado = threading.Lock()
+        self._turno = threading.Lock()
         self._vistos = set()                     # comandos ya atendidos
         self.cliente = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2,
                                    client_id="bikesafe13-servidor-{}".format(
@@ -106,19 +115,30 @@ class Servidor:
     def publicar_firmado(self, topico, texto):
         """Firma el mensaje (ver firmware/esp32/firma.py) y lo publica.
         El contador es la hora en ms y nunca se repite."""
-        with self._candado:
+        with self._turno:
             self._contador = max(self._contador + 1, int(time.time() * 1000))
             contador = self._contador
         if cfg.MQTT_CLAVE:
             texto = firma.firmar(cfg.MQTT_CLAVE, texto, contador)
         self.cliente.publish(topico, texto)
 
+    @staticmethod
+    def _descifrar(datos, que):
+        """Las fotos llegan CIFRADAS (firmware/camara/cifrado.py). Si no
+        vienen cifradas o la firma no cuadra, se descartan: asi nadie
+        puede ver las fotos en el broker ni mandarnos fotos falsas."""
+        try:
+            return cifrado.descifrar(cfg.MQTT_CLAVE, datos)
+        except ValueError as e:
+            raise ValueError("descarto {} ({})".format(que, e))
+
     def al_recibir(self, cliente, userdata, msg):
         try:
             if msg.topic == T_FRAME:
-                self.procesar_frame(msg.payload)
+                self.procesar_frame(self._descifrar(msg.payload, "foto"))
             elif msg.topic == T_INFO:
-                self.info_foto = json.loads(msg.payload.decode())
+                self.info_foto = json.loads(
+                    self._descifrar(msg.payload, "info").decode())
             else:
                 self.procesar_texto(msg.topic,
                                     msg.payload.decode(errors="replace"))
@@ -143,7 +163,7 @@ class Servidor:
             try:
                 self.lectura[nombre] = float(texto)
             except ValueError:
-                self.lectura[nombre] = texto        # cerrojo / lazo
+                self.lectura[nombre] = texto        # tapa / lazo
         elif topico == "bikesafe/sensores":
             # La ESP32 manda todo junto: es la lectura completa
             datos = json.loads(texto)
@@ -151,7 +171,8 @@ class Servidor:
                                 distancia=datos.get("dist"),
                                 movimiento=datos.get("cambio"),
                                 inclinacion=datos.get("incl"),
-                                cerrojo=datos.get("cerrojo"),
+                                tapa=datos.get("tapa"),
+                                obturador=datos.get("obturador"),
                                 lazo=datos.get("lazo"),
                                 luz=datos.get("luz"))
             self._guardar_lectura_si_toca()

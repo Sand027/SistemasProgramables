@@ -1,9 +1,9 @@
 <!DOCTYPE html>
 <!--
 ============================================
-Proyecto:  BikeSafe - Candado inteligente portatil
+Proyecto:  BikeSafe - Sistema de vigilancia y alarma para bicicletas
 Archivo:   interfaz/index.html
-Objetivo:  Dashboard en tiempo real: estado del candado y de sus sensores,
+Objetivo:  Dashboard en tiempo real: estado de la vigilancia y sus sensores,
            control remoto (comandos por Firestore), historial de eventos,
            alertas y fotos analizadas por la IA
 Equipo:    Oscar Sandoval Cabrera (23240457),
@@ -43,7 +43,7 @@ de ejemplo sin Firebase.
   @media (max-width:980px){ .s2,.s3,.s4,.s5,.s7,.s8 { grid-column:span 6; } }
   @media (max-width:620px){ .s2,.s3,.s4,.s5,.s7,.s8 { grid-column:span 12; } }
   .estado { font-size:28px; font-weight:700; display:flex; align-items:center; gap:10px; }
-  .LIBRE { color:var(--verde); } .ASEGURADA { color:var(--azul); } .ALARMA { color:var(--rojo); }
+  .DESARMADO { color:var(--verde); } .VIGILANDO { color:var(--azul); } .ALARMA { color:var(--rojo); }
   .led { width:18px; height:18px; border-radius:50%; border:2px solid #CBD5E1; background:#E5E7EB; flex:none; }
   .valor { font-size:26px; font-weight:700; } .unidad { font-size:14px; color:var(--gris); }
   .sub { font-size:12px; color:var(--gris); margin-top:4px; }
@@ -56,7 +56,7 @@ de ejemplo sin Firebase.
   .botones { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
   .botones button, .chico { border:0; border-radius:10px; padding:11px 6px; font-weight:700; font-size:14px; cursor:pointer; color:#fff; background:var(--azul); }
   .botones button:disabled { opacity:.45; cursor:not-allowed; }
-  .botones .b-abrir { background:var(--verde); } .botones .b-silenciar { background:var(--ambar); } .botones .b-buscar { background:var(--morado); }
+  .botones .b-desarmar { background:var(--verde); } .botones .b-silenciar { background:var(--ambar); } .botones .b-buscar { background:var(--morado); }
   .chico { padding:6px 10px; font-size:12px; background:#475569; }
   #confirmar { display:none; margin-top:10px; padding:10px; border-radius:10px; background:#FEF2F2; border:1px solid #FCA5A5; font-size:13px; }
   .fotos { display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:12px; }
@@ -71,7 +71,7 @@ de ejemplo sin Firebase.
 </head>
 <body>
 <header>
-  <div><h1>🚲 BikeSafe · Panel del candado</h1><small>Equipo 13 · Sistemas Programables · TecNM León</small></div>
+  <div><h1>🚲 BikeSafe · Panel de vigilancia</h1><small>Equipo 13 · Sistemas Programables · TecNM León</small></div>
   <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
     <span id="conexion" class="pildora">Conectando…</span>
     <span id="placa" class="pildora">ESP32: —</span>
@@ -83,7 +83,7 @@ de ejemplo sin Firebase.
   <div id="aviso"></div>
 
   <section class="card s3"><h2>Estado</h2><div class="estado"><span id="led" class="led" title="Color del LED RGB"></span><span id="estado">—</span></div><div class="sub" id="actualizado">sin datos</div></section>
-  <section class="card s3"><h2>Cerrojo (reed switch)</h2><div class="valor" id="cerrojo">—</div><div class="sub">Cable de acero: <b id="lazo">—</b></div></section>
+  <section class="card s3"><h2>Cámara y caja</h2><div class="valor" id="obturador">—</div><div class="sub">Tapa: <b id="tapa">—</b> · Cable de sujeción: <b id="lazo">—</b></div></section>
   <section class="card s2"><h2>Distancia</h2><div><span class="valor" id="distancia">—</span> <span class="unidad">cm</span></div><div class="sub">HC-SR04 · cerca &lt; 50 cm</div></section>
   <section class="card s2"><h2>Movimiento</h2><div><span class="valor" id="movimiento">—</span> <span class="unidad">g</span></div><div class="sub">MPU6050 · <span id="inclinacion">—</span>°</div></section>
   <section class="card s2"><h2>Última IA</h2><div class="valor" id="ultima_ia">—</div><div class="sub" id="ultima_alerta">sin alertas</div></section>
@@ -91,15 +91,15 @@ de ejemplo sin Firebase.
   <section class="card s5">
     <h2>Control remoto</h2>
     <div class="botones">
-      <button data-cmd="asegurar">🔒 Cerrar</button>
-      <button data-cmd="liberar" class="b-abrir">🔓 Abrir</button>
+      <button data-cmd="armar">🛡️ Armar</button>
+      <button data-cmd="desarmar" class="b-desarmar">👋 Desarmar</button>
       <button data-cmd="foto">📷 Foto</button>
       <button data-cmd="silenciar" class="b-silenciar">🔕 Silenciar</button>
       <button data-cmd="buscar" class="b-buscar">🔊 Buscar</button>
       <button data-cmd="pitido" title="Prueba del actuador: buzzer">🔔 Pitido</button>
     </div>
-    <div id="confirmar">¿Seguro que quieres <b>ABRIR</b> el candado? Se le avisará al dueño por Telegram.
-      <div style="margin-top:8px;display:flex;gap:8px"><button class="chico" id="si-abrir" style="background:var(--rojo)">Sí, abrir</button><button class="chico" id="no-abrir">Cancelar</button></div></div>
+    <div id="confirmar">¿Seguro que quieres <b>DESARMAR</b> la vigilancia? Se le avisará al dueño por Telegram.
+      <div style="margin-top:8px;display:flex;gap:8px"><button class="chico" id="si-desarmar" style="background:var(--rojo)">Sí, desarmar</button><button class="chico" id="no-desarmar">Cancelar</button></div></div>
     <div class="sub" style="margin-top:10px">Cada botón crea un documento en Firestore; el servidor lo escucha en tiempo real, lo firma y lo manda a la ESP32. La ESP32 decide y avisa por Telegram.</div>
     <table style="margin-top:10px"><thead><tr><th>Hora</th><th>Comando</th><th>Quién</th><th>Estado</th></tr></thead><tbody id="comandos"><tr><td colspan="4" class="vacio">Sin comandos</td></tr></tbody></table>
   </section>
@@ -120,8 +120,8 @@ const fmt = (v, n = 1) => (v === null || v === undefined || isNaN(v)) ? "—" : 
 // Todo lo que viene de la base se muestra como TEXTO (nunca como HTML)
 const esc = (t) => String(t ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const COLOR_LED = { verde: "#22C55E", azul: "#2563EB", rojo: "#EF4444", amarillo: "#FACC15", morado: "#A855F7", cian: "#22D3EE", blanco: "#FFFFFF", apagado: "#E5E7EB" };
-const ICONO = { estado: "🔁", comando: "👆", conexion: "📶", cerrojo: "🧲" };
-const NOMBRE_CMD = { asegurar: "Cerrar", liberar: "Abrir", foto: "Foto", silenciar: "Silenciar", buscar: "Buscar", pitido: "Pitido", led_prueba: "LED" };
+const ICONO = { estado: "🔁", comando: "👆", conexion: "📶", tapa: "🧲", rfid: "💳" };
+const NOMBRE_CMD = { armar: "Armar", desarmar: "Desarmar", foto: "Foto", silenciar: "Silenciar", buscar: "Buscar", pitido: "Pitido", led_prueba: "LED" };
 
 const grafica = !window.Chart ? null : new Chart($("grafica"), {
   type: "line",
@@ -143,8 +143,10 @@ function pintarEstado(e) {
   $("estado").className = e.estado || "";
   $("led").style.background = COLOR_LED[e.luz] || COLOR_LED.apagado;
   $("led").title = "LED RGB: " + (e.luz || "—");
-  $("cerrojo").textContent = e.cerrojo || "—";
-  $("cerrojo").className = "valor " + (e.cerrojo === "CERRADO" ? "ok" : e.cerrojo === "ABIERTO" ? "malo" : "");
+  $("obturador").textContent = e.obturador ? (e.obturador === "TAPADA" ? "🙈 Tapada" : "👁️ Vigilando") : "—";
+  $("obturador").title = "Obturador de privacidad (servo)";
+  $("tapa").textContent = e.tapa || "—";
+  $("tapa").className = e.tapa === "ABIERTA" ? "malo" : "ok";
   $("lazo").textContent = e.lazo || "—";
   $("lazo").className = e.lazo === "CORTADO" ? "malo" : "ok";
   $("distancia").textContent = fmt(e.distancia);
@@ -203,11 +205,11 @@ function aviso(texto) { $("aviso").style.display = "block"; $("aviso").textConte
 // ---------- botones de control ----------
 let enviar = null;                        // se define en vivo o en demo
 document.querySelectorAll("[data-cmd]").forEach((b) => b.onclick = () => {
-  if (b.dataset.cmd === "liberar") { $("confirmar").style.display = "block"; return; }
+  if (b.dataset.cmd === "desarmar") { $("confirmar").style.display = "block"; return; }
   enviar && enviar(b.dataset.cmd);
 });
-$("si-abrir").onclick = () => { $("confirmar").style.display = "none"; enviar && enviar("liberar"); };
-$("no-abrir").onclick = () => { $("confirmar").style.display = "none"; };
+$("si-desarmar").onclick = () => { $("confirmar").style.display = "none"; enviar && enviar("desarmar"); };
+$("no-desarmar").onclick = () => { $("confirmar").style.display = "none"; };
 const botonesActivos = (si) => document.querySelectorAll("[data-cmd]").forEach((b) => b.disabled = !si);
 botonesActivos(false);
 
@@ -220,12 +222,12 @@ function demo() {
   const lect = Array.from({ length: 30 }, (_, i) => ({ ts: ts((30 - i) * 5),
     distancia: i > 22 ? 25 + Math.random() * 10 : 120 + Math.random() * 30, movimiento: i === 25 ? 0.42 : Math.random() * 0.06, inclinacion: Math.random() * 2 }));
   pintarLecturas(lect);
-  const estado = { estado: "ASEGURADA", luz: "azul", cerrojo: "CERRADO", lazo: "ENTERO", distancia: 28.4, movimiento: 0.03, inclinacion: 1.2, ultima_ia: "persona",
+  const estado = { estado: "VIGILANDO", luz: "azul", obturador: "DESTAPADA", tapa: "CERRADA", lazo: "ENTERO", distancia: 28.4, movimiento: 0.03, inclinacion: 1.2, ultima_ia: "persona",
                    ultima_confianza: 0.63, ultima_alerta: "IA: persona junto a la bici (63%)", actualizado: new Date(), conexion: "online", servidor: "online" };
   pintarEstado(estado);
   pintarAlertas([{ ts: ts(5), texto: "IA: persona junto a la bici (63%)" }, { ts: ts(9), texto: "Alguien cerca de la bici" },
                  { ts: ts(40), texto: "AVISO: Movimiento (1 de 4)" }]);
-  const eventos = [{ ts: ts(60), tipo: "estado", detalle: "LIBRE -> ASEGURADA", origen: "telegram" }, { ts: ts(61), tipo: "comando", detalle: "asegurar", origen: "telegram" },
+  const eventos = [{ ts: ts(60), tipo: "estado", detalle: "DESARMADO -> VIGILANDO", origen: "tarjeta" }, { ts: ts(90), tipo: "rfid", detalle: "tarjeta desconocida 4F2A9C11", origen: "" },
                    { ts: ts(120), tipo: "conexion", detalle: "ESP32 online", origen: "broker" }];
   pintarEventos(eventos);
   const comandos = [];
@@ -238,8 +240,8 @@ function demo() {
     comandos.unshift(c); pintarComandos(comandos.slice(0, 6));
     setTimeout(() => {
       c.estado = "enviado"; pintarComandos(comandos.slice(0, 6));
-      if (cmd === "liberar") Object.assign(estado, { estado: "LIBRE", luz: "verde" });
-      if (cmd === "asegurar") Object.assign(estado, { estado: "ASEGURADA", luz: "azul" });
+      if (cmd === "desarmar") Object.assign(estado, { estado: "DESARMADO", luz: "verde", obturador: "TAPADA" });
+      if (cmd === "armar") Object.assign(estado, { estado: "VIGILANDO", luz: "azul", obturador: "DESTAPADA" });
       eventos.unshift({ ts: new Date(), tipo: "comando", detalle: cmd, origen: "dashboard: Demo" }); pintarEventos(eventos);
       estado.actualizado = new Date(); pintarEstado(estado);
     }, 700);

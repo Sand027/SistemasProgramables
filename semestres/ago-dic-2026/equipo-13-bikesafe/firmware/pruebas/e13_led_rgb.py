@@ -1,7 +1,7 @@
 # ============================================
-# Proyecto:  BikeSafe - Candado inteligente portatil
+# Proyecto:  BikeSafe - Sistema de vigilancia y alarma para bicicletas
 # Archivo:   pruebas/e13_led_rgb.py
-# Objetivo:  Probar el LED RGB (R=GPIO33, G=GPIO32, B=GPIO19) y saber
+# Objetivo:  Probar el LED RGB (R=GPIO33, G=GPIO32, B=GPIO2) y saber
 #            si es de catodo comun o de anodo comun
 # Equipo:    Oscar Sandoval Cabrera (23240457),
 #            Diego Josue Talamantes Santiago (23240355)
@@ -12,7 +12,7 @@
 # CONEXION: el LED RGB tiene 4 patitas; la MAS LARGA es la comun.
 #   R  -> resistencia 220 ohm -> D33
 #   G  -> resistencia 220 ohm -> D32
-#   B  -> resistencia 220 ohm -> D19
+#   B  -> resistencia 220 ohm -> D2
 #   comun (larga) -> GND   (si es de catodo comun)
 #                 -> 3.3 V (si es de anodo comun)
 #
@@ -29,7 +29,7 @@ ANODO_COMUN = False
 
 r = Pin(33, Pin.OUT)
 g = Pin(32, Pin.OUT)
-b = Pin(19, Pin.OUT)
+b = Pin(2, Pin.OUT)
 
 COLORES = [("ROJO", 1, 0, 0), ("VERDE", 0, 1, 0), ("AZUL", 0, 0, 1),
            ("AMARILLO", 1, 1, 0), ("MORADO", 1, 0, 1), ("CIAN", 0, 1, 1),

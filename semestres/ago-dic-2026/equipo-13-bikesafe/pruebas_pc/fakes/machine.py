@@ -1,5 +1,5 @@
 # ============================================
-# Proyecto:  BikeSafe - Candado inteligente portatil
+# Proyecto:  BikeSafe - Sistema de vigilancia y alarma para bicicletas
 # Archivo:   pruebas_pc/fakes/machine.py
 # Objetivo:  Falso del modulo machine de MicroPython (pines, PWM, UART, I2C) para probar en la PC
 # Equipo:    Oscar Sandoval Cabrera (23240457),

@@ -1,6 +1,34 @@
-# 📋 Revisión del 25 de noviembre: observaciones y cambios
+# 📋 Revisiones de la maestra: observaciones y cambios
 
-Respuesta punto por punto al plan de acción de la maestra (PR, equipo 13).
+## Revisión del 27 de noviembre (cambios solicitados en el PR + plática en clase)
+
+Decisión acordada con la maestra: **BikeSafe deja de ser candado y es un sistema de vigilancia y alarma**. El dueño se reconoce con el **RFID** que nos prestó (con él se completan los 3 sensores), se usan los 3 actuadores, se conserva la caja impresa en 3D y el servo necesitaba una función real.
+
+| # | Observación | Qué hicimos | Dónde verlo | Estado |
+|---|---|---|---|---|
+| 1 | **Un solo enfoque y un solo nombre** en todo el repo | Se eligió **vigilancia y alarma**. Estados `DESARMADO / VIGILANDO / ALARMA`; comandos `armar / desarmar`; se quitó "candado", "cerrojo", "asegurar" y "liberar" del código, `config.example.py`, encabezados, bot, dashboard, reglas, README y DEMO. `simular_candado.py` → `simular_placas.py`, `e14_cerrojo_reed.py` → `e14_tapa_reed.py` | Todo el repositorio | ✅ |
+| 2 | **Función real del servo** | **Obturador de privacidad:** tapa la lente de la cámara cuando está desarmado y la destapa al vigilar (o 6 s para una foto pedida) | `Obturador` en `firmware/esp32/hal/actuadores.py` · `e02_servo.py` | ✅ Código · 🟡 pestaña en la caja |
+| 3 | **RFID: explicar qué falló, con evidencia** y regresarlo | Historia completa con las mediciones (corto, `0x00`/`0xFF`, MISO "al aire", 8 combinaciones, 0.48 V en MOSI). El RC522 prestado se integra como **sensor 3**: tarjeta del dueño arma/desarma, una ajena desarmado solo pita, 3 ajenas en 1 min vigilando = ALARMA | [README › RFID](../README.md#-rfid-qué-falló-la-primera-vez-y-cómo-se-resolvió) · `LectorRFID` en `hal/sensores.py` | ✅ Código · 🟡 soldar y fotos |
+| 4 | **Componente no convencional** | El **bot de Telegram** | [README › Bot](../README.md#-bot-de-telegram-componente-no-convencional) | ✅ |
+| 5 | **Pines 18/19 ocupados por reed y LED** | El RC522 va en VSPI (18, 19, 23, 5, 4). El reed pasó a **GPIO15** y el azul del LED a **GPIO2** | README › HAL · `config.example.py` · [SOLDADURA.md](SOLDADURA.md) | ✅ |
+| 6 | **Reed switch:** ¿para qué? | Ahora detecta si **abren la tapa de la caja**. No deja armar con la tapa abierta, y si la abren vigilando es ALARMA | `SensorTapa` · `e14_tapa_reed.py` | ✅ Código · 🟡 montaje |
+| 7 | **¿Las fotos viajan por HiveMQ público? ¿Privacidad?** | Sí viajaban abiertas. Ahora van **cifradas (AES-256-CBC + HMAC-SHA256)**; si no hay clave, la Freenove no publica. Además: obturador, servidor web de la cámara apagado, Telegram por HTTPS solo al dueño y Firestore cerrado | [README › Seguridad y privacidad](../README.md#-seguridad-y-privacidad-de-las-fotos) · `firmware/camara/cifrado.py` | ✅ |
+| 8 | **Evidencia física:** placa soldada, abrazadera real, caja cerrada, reed y RGB funcionando, demo sin laptop | Guion nuevo de demo sin laptop. Las fotos y el video los toma el equipo con la versión soldada | [DEMO.md](DEMO.md) · `media/` | 🟡 Equipo |
+| 9 | **CODEOWNERS** con `@pendiente-talamantes` | Se pusieron los usuarios reales: `@Sand027` y `@josuegoku2203-creator` | `.github/CODEOWNERS` | ✅ |
+
+### Pruebas después de los cambios
+
+| Prueba | Resultado |
+|---|---|
+| Simulación de la ESP32 (RFID dueño/ajena, tapa, obturador, firma, replay, IA, cable, inclinación, presencia, RC522 sin comunicación) | 65 / 65 |
+| Simulación de la Freenove (botones Armar/Desarmar, confirmación, extraños, **fotos cifradas**, reconexión, sin internet) | 20 / 20 |
+| Punta a punta con broker real (foto cifrada → servidor la descifra → YOLO → resultado firmado → ESP32 decide; comandos del dashboard) | 19 / 19 |
+
+---
+
+## Revisión del 25 de noviembre
+
+Respuesta punto por punto al plan de acción de la maestra (PR, equipo 13). *Nota: en esta revisión el proyecto todavía era "candado"; los nombres se cambiaron el 27 de noviembre.*
 
 | # | Observación | Qué hicimos | Dónde verlo | Estado |
 |---|---|---|---|---|
@@ -22,11 +50,11 @@ Respuesta punto por punto al plan de acción de la maestra (PR, equipo 13).
 - **Cámara:** ping MQTT cada 30 s y reintento, para no perder fotos.
 - **Una sola versión del código:** antes había 3 copias distintas (GitHub, OneDrive y las placas). Ahora el repositorio es la única fuente.
 
-## Pruebas antes de cargar a las placas
+## Pruebas del 25 de noviembre
 
 | Prueba | Resultado |
 |---|---|
-| Simulación de la ESP32 (máquina de estados, reed, IA, firma, replay, lazo, inclinación, presencia, buscar, LED) | 50 / 50 |
+| Simulación de la ESP32 (máquina de estados, reed, IA, firma, replay, lazo, inclinación, presencia, buscar, LED) | 50 / 50 (versión del 25/nov) |
 | Simulación de la Freenove (botones, confirmación, extraños, fotos, MQTT con reconexión, sin internet) | 17 / 17 |
 | `telegram.py` (peticiones HTTP y lectura de `getUpdates`) | OK |
 | Punta a punta con un broker real (placas simuladas + servidor con YOLO + comandos del dashboard) | 18 / 18 |

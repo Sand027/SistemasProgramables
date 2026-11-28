@@ -1,5 +1,5 @@
 # ============================================
-# Proyecto:  BikeSafe - Candado inteligente portatil
+# Proyecto:  BikeSafe - Sistema de vigilancia y alarma para bicicletas
 # Archivo:   servidor/ia/__init__.py
 # Objetivo:  Marca la carpeta ia como paquete de Python
 # Equipo:    Oscar Sandoval Cabrera (23240457),

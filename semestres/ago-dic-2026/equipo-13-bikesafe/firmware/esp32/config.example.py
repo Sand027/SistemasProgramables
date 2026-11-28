@@ -1,8 +1,9 @@
 # ============================================
-# Proyecto:  BikeSafe - Candado inteligente portatil
+# Proyecto:  BikeSafe - Sistema de vigilancia y alarma para bicicletas
 # Archivo:   config.example.py
 # Objetivo:  Guardar en UN solo lugar todo lo que se puede ajustar:
-#            pines, piezas conectadas, umbrales, WiFi y MQTT
+#            pines, tarjetas del dueno, piezas conectadas, umbrales,
+#            WiFi y MQTT
 # Equipo:    Oscar Sandoval Cabrera (23240457),
 #            Diego Josue Talamantes Santiago (23240355)
 # Materia:   Sistemas Programables - ISC TecNM Leon
@@ -12,7 +13,7 @@
 # PLANTILLA: copien este archivo como config.py y llenen sus datos.
 # config.py NO se sube a GitHub (esta en .gitignore).
 #
-# REGLA: si quieres cambiar algo del comportamiento del candado,
+# REGLA: si quieres cambiar algo del comportamiento de BikeSafe,
 # casi siempre se cambia AQUI y no en main.py.
 
 # ---------------------------------------------------------------
@@ -26,23 +27,34 @@ PIN_I2C_SCL = 22
 PIN_TRIG = 26
 PIN_ECHO = 27          # OJO: pasa por el divisor de 1k + 2k
 
-# Sensor magnetico del cerrojo (reed switch): una patita al pin y la
-# otra a GND. El iman va en la punta del cable / en el pasador.
-PIN_REED = 18
+# Lector RFID RC522 (bus SPI por hardware). VCC a 3.3 V, NUNCA a 5 V.
+PIN_RFID_SCK  = 18
+PIN_RFID_MOSI = 23
+PIN_RFID_MISO = 19
+PIN_RFID_SDA  = 5      # tambien se llama SS o CS
+PIN_RFID_RST  = 4
+
+# Reed switch de la TAPA de la caja: una patita al pin y la otra a
+# GND. El iman va pegado en la tapa.
+PIN_REED = 15
 
 # Actuadores
-PIN_SERVO     = 13
+PIN_SERVO     = 13     # obturador de la camara
 PIN_BUZZER    = 25     # (+) del buzzer directo a D25 (sin el 2N2222)
 
 # LED RGB (cada color con su resistencia de 220 ohm)
 PIN_RGB_R = 33         # el rojo va donde estaba el LED rojo
 PIN_RGB_G = 32         # el verde va donde estaba el LED verde
-PIN_RGB_B = 19         # el azul es el unico cable nuevo
+PIN_RGB_B = 2          # el azul (el 19 ahora es del RFID)
+# Nota: GPIO2 y GPIO15 son pines "de arranque". Funcionan bien para el
+# LED azul y el reed; solo si algun dia la placa no deja instalar
+# MicroPython, desconecten esos 2 cables un momento.
 # Si todavia no tienen el RGB, se usan los 2 LEDs de antes:
 PIN_LED_VERDE = 32
 PIN_LED_ROJO  = 33
 
-# Lazo anti-corte (un cable que va de este pin a GND)
+# Cable de sujecion anti-corte (un cable delgado de este pin a GND
+# que acompana al cable con el que la caja se amarra a la bici)
 PIN_LAZO = 14
 
 # Sensor de movimiento PIR HC-SR501 (OUT), opcional
@@ -59,16 +71,28 @@ PIN_CAM_RX = 16        # ESP32 RX2 <- Freenove GPIO32 (TX)
 # principal funciona aunque falte una pieza.
 USAR_ACELEROMETRO = True
 USAR_ULTRASONICO  = True
-USAR_SENSOR_CERROJO = True # reed switch (3er sensor)
+USAR_RFID         = True   # 3er sensor: reconoce al dueno
+USAR_SENSOR_TAPA  = True   # reed switch de la tapa (extra)
 USAR_LAZO         = True
 USAR_PIR          = False  # True cuando conecten el PIR
 USAR_CAMARA       = True
 USAR_WIFI_MQTT    = True   # False = funciona sin red (solo Telegram)
 USAR_LED_RGB      = True   # False = LEDs verde y rojo de antes
 
-# MODO PRUEBA: con True, el candado se asegura solo 5 segundos
-# despues de prender (para probar la alarma sin Telegram).
-ASEGURAR_AL_ARRANCAR = False
+# MODO PRUEBA: con True, empieza a vigilar solo 5 segundos despues
+# de prender (para probar la alarma sin tarjeta ni Telegram).
+ARMAR_AL_ARRANCAR = False
+
+# ---------------------------------------------------------------
+# TARJETAS DEL DUENO (RFID)
+# ---------------------------------------------------------------
+# Pasa tu tarjeta o llavero por el lector con Thonny abierto: sale
+# "Tarjeta: A1B2C3D4". Copia ese numero aqui. Puede haber varias.
+TARJETAS_DUENO = [
+    "A1B2C3D4",
+]
+TARJETAS_PARA_ROBO = 3       # 3 tarjetas ajenas seguidas = ROBO
+VENTANA_TARJETAS_MS = 60000  # ...dentro de 1 minuto
 
 # ---------------------------------------------------------------
 # 3. BUZZER, SERVO Y LED
@@ -77,9 +101,10 @@ ASEGURAR_AL_ARRANCAR = False
 # False = buzzer PASIVO  (necesita que le generemos el tono)
 BUZZER_ACTIVO = True
 
-# Angulos del servo. Ajustalos cuando armes el pestillo.
-SERVO_ABIERTO = 0
-SERVO_CERRADO = 90
+# Angulos del servo del obturador. Ajustalos con la caja armada:
+# TAPADO = la tapita cubre la ventana de la camara.
+SERVO_TAPADO = 0
+SERVO_DESTAPADO = 90
 
 # LED RGB: False = catodo comun (patita larga a GND)
 #          True  = anodo comun  (patita larga a 3.3 V)
@@ -108,11 +133,10 @@ TIEMPO_CERCA_MS    = 3000   # ...durante 3 segundos = foto
 ESPERA_ENTRE_FOTOS_MS = 20000  # no tomar fotos mas seguido que esto
 
 # ---------------------------------------------------------------
-# 6. SENSOR MAGNETICO DEL CERROJO
+# 6. REED SWITCH DE LA TAPA
 # ---------------------------------------------------------------
 REED_CERRADO_ES = 0          # 0 = el pin lee 0 con el iman cerca
-REED_OBLIGATORIO = True      # no cierra si el cable no esta metido
-TIEMPO_CERROJO_ABIERTO_MS = 500  # abierto asi de tiempo asegurada = ROBO
+TIEMPO_TAPA_ABIERTA_MS = 500 # abierta asi de tiempo vigilando = ROBO
 
 # ---------------------------------------------------------------
 # 7. IA (la decision la toma ESTA placa, no la laptop)
@@ -145,8 +169,9 @@ MQTT_PUERTO = 1883
 MQTT_CLIENTE = "bikesafe-esp32"
 PERIODO_PUBLICAR_MS = 2000      # cada cuanto manda los sensores
 # Clave secreta para FIRMAR los mensajes MQTT (ver firma.py). Debe
-# ser IGUAL a la de servidor/clave_mqtt.txt. Sin clave, el candado
-# no acepta "abrir" por MQTT (el broker publico lo ve cualquiera).
+# ser IGUAL a la de servidor/clave_mqtt.txt y a la de la Freenove.
+# Sin clave, no se acepta "desarmar" por MQTT (el broker publico lo
+# ve cualquiera).
 MQTT_CLAVE = ""
-# Permitir abrir el candado desde el dashboard (solo con clave).
-PERMITIR_ABRIR_POR_MQTT = True
+# Permitir desarmar desde el dashboard (solo con clave).
+PERMITIR_DESARMAR_POR_MQTT = True

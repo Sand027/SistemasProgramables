@@ -1,5 +1,5 @@
 # ============================================
-# Proyecto:  BikeSafe - Candado inteligente portatil
+# Proyecto:  BikeSafe - Sistema de vigilancia y alarma para bicicletas
 # Archivo:   pruebas/e08_buzzer.py
 # Objetivo:  Probar el buzzer con el transistor 2N2222 (GPIO25) y saber si es activo o pasivo
 # Equipo:    Oscar Sandoval Cabrera (23240457),

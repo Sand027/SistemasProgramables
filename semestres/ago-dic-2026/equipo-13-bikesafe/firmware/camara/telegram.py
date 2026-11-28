@@ -1,5 +1,5 @@
 # ============================================
-# Proyecto:  BikeSafe - Candado inteligente portatil
+# Proyecto:  BikeSafe - Sistema de vigilancia y alarma para bicicletas
 # Archivo:   telegram.py   (va en la FREENOVE)
 # Objetivo:  Mandar mensajes y fotos al celular con un bot de
 #            Telegram, usando solo lo que ya trae MicroPython
@@ -55,14 +55,14 @@ def _para_url(texto):
 
 
 # Botones que aparecen abajo del chat (el usuario solo los toca)
-BOTONES = [["Cerrar", "Abrir"], ["Foto", "Estado"], ["Buscar", "Silenciar"]]
-CONFIRMAR = [["Si, abrir", "No"]]
+BOTONES = [["Armar", "Desarmar"], ["Foto", "Estado"], ["Buscar", "Silenciar"]]
+CONFIRMAR = [["Si, desarmar", "No"]]
 
 
 def enviar_mensaje(token, chat_id, texto, botones=False):
     """Manda un mensaje de texto. Regresa True si Telegram lo acepto.
     botones=True pone el teclado normal; botones="confirmar" pone
-    el de "Si, abrir / No"."""
+    el de "Si, desarmar / No"."""
     cuerpo = "chat_id={}&text={}".format(chat_id, _para_url(texto))
     if botones:
         teclas = CONFIRMAR if botones == "confirmar" else BOTONES

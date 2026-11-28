@@ -1,5 +1,5 @@
 # ============================================
-# Proyecto:  BikeSafe - Candado inteligente portatil
+# Proyecto:  BikeSafe - Sistema de vigilancia y alarma para bicicletas
 # Archivo:   pruebas/e04_camara.py
 # Objetivo:  Probar la camara de la Freenove sola: tomar una foto y guardarla (se corre en la FREENOVE)
 # Equipo:    Oscar Sandoval Cabrera (23240457),

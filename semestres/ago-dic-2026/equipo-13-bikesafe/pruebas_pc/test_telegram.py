@@ -1,5 +1,5 @@
 # ============================================
-# Proyecto:  BikeSafe - Candado inteligente portatil
+# Proyecto:  BikeSafe - Sistema de vigilancia y alarma para bicicletas
 # Archivo:   pruebas_pc/test_telegram.py
 # Objetivo:  Pruebas de las peticiones HTTP de telegram.py
 # Equipo:    Oscar Sandoval Cabrera (23240457),
@@ -23,9 +23,9 @@ def fake(resp):
     def c():
         s=S(resp); ultima.append(s); return s
     T._conectar=c
-cuerpo=json.dumps({"ok":True,"result":[{"update_id":7,"message":{"chat":{"id":555},"text":"Cerrar"}},{"update_id":8,"message":{"chat":{"id":555},"text":"Sí, abrir"}}]}).encode()
+cuerpo=json.dumps({"ok":True,"result":[{"update_id":7,"message":{"chat":{"id":555},"text":"Armar"}},{"update_id":8,"message":{"chat":{"id":555},"text":"Sí, desarmar"}}]}).encode()
 fake(b"HTTP/1.0 200 OK\r\nContent-Type: application/json\r\n\r\n"+cuerpo)
-l,sig=T.obtener_comandos("TOKEN",5); print(l,sig); assert l==[("555","Cerrar"),("555","Sí, abrir")] and sig==9
+l,sig=T.obtener_comandos("TOKEN",5); print(l,sig); assert l==[("555","Armar"),("555","Sí, desarmar")] and sig==9
 assert b"offset=5" in ultima[-1].w
 fake(b"HTTP/1.1 200 OK\r\n\r\n{}")
 assert T.enviar_mensaje("TOKEN","555","Hola ñ\nadiós",botones=True)

@@ -1,5 +1,5 @@
 # ============================================
-# Proyecto:  BikeSafe - Candado inteligente portatil
+# Proyecto:  BikeSafe - Sistema de vigilancia y alarma para bicicletas
 # Archivo:   servidor/config.py
 # Objetivo:  Ajustes del servidor Python: broker MQTT, IA y Firebase
 # Equipo:    Oscar Sandoval Cabrera (23240457),
@@ -44,7 +44,7 @@ MQTT_CLAVE = _leer_clave()
 # propio umbral (IA_CONFIANZA_MINIMA en su config.py).
 # Desde que confianza se reporta "persona" (0 a 1):
 CONFIANZA_MINIMA = 0.45
-# La camara va dentro del candado viendo hacia arriba, asi que la IA
+# La camara va dentro de la caja viendo hacia arriba, asi que la IA
 # prueba la foto en varios giros y se queda con el mejor resultado.
 PROBAR_GIROS = True
 # Fotos analizadas con sus recuadros (no se suben a GitHub)

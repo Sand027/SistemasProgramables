@@ -1,5 +1,5 @@
 # ============================================
-# Proyecto:  BikeSafe - Candado inteligente portatil
+# Proyecto:  BikeSafe - Sistema de vigilancia y alarma para bicicletas
 # Archivo:   servidor/nube.py
 # Objetivo:  Guardar en Firestore todo lo que pasa (lecturas, alertas,
 #            eventos, decisiones de la IA) y ESCUCHAR en tiempo real los
@@ -14,10 +14,10 @@
 #
 #   proyectos/bikesafe                      <- documento del proyecto
 #       /lecturas/{id}      historico de sensores (cada 5 s)
-#           distancia, movimiento, inclinacion, cerrojo, lazo, estado, ts
+#           distancia, movimiento, inclinacion, tapa, obturador, lazo, estado, ts
 #       /alertas/{id}       avisos y robos: texto, estado, ts
 #       /eventos/{id}       historial: cambios de estado, comandos,
-#                           conexion, cerrojo... tipo, detalle, origen, ts
+#                           conexion, rfid, tapa... tipo, detalle, origen, ts
 #       /eventos_ia/{id}    cada foto analizada: deteccion, confianza,
 #                           personas, modelo, nivel, motivo, imagen, ts
 #       /comandos/{id}      lo que pide el dashboard (lo ESCUCHAMOS):
@@ -47,7 +47,7 @@ class Nube:
     def __init__(self, llave, carpeta_local):
         self.db = None
         self.carpeta_local = carpeta_local
-        self._candado = threading.Lock()   # escrituras locales en orden
+        self._turno = threading.Lock()   # escrituras locales en orden
         self._escucha = None
         if os.path.exists(llave):
             try:
@@ -87,7 +87,7 @@ class Nube:
         datos["ts"] = ts.isoformat()
         ruta = os.path.join(self.carpeta_local, coleccion + ".jsonl")
         os.makedirs(self.carpeta_local, exist_ok=True)
-        with self._candado, open(ruta, "a", encoding="utf-8") as f:
+        with self._turno, open(ruta, "a", encoding="utf-8") as f:
             f.write(json.dumps(datos, ensure_ascii=False) + "\n")
 
     def guardar_lectura(self, lectura):
@@ -117,7 +117,7 @@ class Nube:
         except Exception as e:
             print("[nube] No pude actualizar el estado:", e)
         ruta = os.path.join(self.carpeta_local, "estado_actual.json")
-        with self._candado:
+        with self._turno:
             previo = {}
             if os.path.exists(ruta):
                 with open(ruta, encoding="utf-8") as f:

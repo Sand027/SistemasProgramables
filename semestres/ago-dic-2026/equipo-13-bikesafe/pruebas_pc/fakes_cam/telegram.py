@@ -1,5 +1,5 @@
 # ============================================
-# Proyecto:  BikeSafe - Candado inteligente portatil
+# Proyecto:  BikeSafe - Sistema de vigilancia y alarma para bicicletas
 # Archivo:   pruebas_pc/fakes_cam/telegram.py
 # Objetivo:  Falso de telegram.py que registra mensajes y fotos
 # Equipo:    Oscar Sandoval Cabrera (23240457),

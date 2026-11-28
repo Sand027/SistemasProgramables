@@ -1,5 +1,5 @@
 # ============================================
-# Proyecto:  BikeSafe - Candado inteligente portatil
+# Proyecto:  BikeSafe - Sistema de vigilancia y alarma para bicicletas
 # Archivo:   pruebas/e09_ultrasonico.py
 # Objetivo:  Probar el sensor ultrasonico HC-SR04 (TRIG=GPIO26, ECHO=GPIO27 con divisor)
 # Equipo:    Oscar Sandoval Cabrera (23240457),

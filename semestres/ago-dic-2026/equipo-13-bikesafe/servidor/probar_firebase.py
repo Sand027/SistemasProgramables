@@ -1,5 +1,5 @@
 # ============================================
-# Proyecto:  BikeSafe - Candado inteligente portatil
+# Proyecto:  BikeSafe - Sistema de vigilancia y alarma para bicicletas
 # Archivo:   servidor/probar_firebase.py
 # Objetivo:  Probar la conexion con Firebase sin placas ni MQTT:
 #            analiza una foto con la IA y escribe datos de ejemplo
@@ -29,17 +29,18 @@ if not nube.en_firebase:
 
 print("1) Escribiendo 10 lecturas de sensores...")
 for i in range(10):
-    lectura = {"estado": "ASEGURADA",
+    lectura = {"estado": "VIGILANDO",
                "distancia": round(random.uniform(110, 150) if i < 7 else random.uniform(25, 40), 1),
                "movimiento": round(0.42 if i == 8 else random.uniform(0.0, 0.06), 2),
                "inclinacion": round(random.uniform(0.5, 2.0), 1),
-               "cerrojo": "CERRADO", "lazo": "ENTERO", "luz": "azul"}
+               "tapa": "CERRADA", "obturador": "DESTAPADA", "lazo": "ENTERO",
+               "luz": "azul"}
     nube.guardar_lectura(lectura)
     nube.actualizar_estado(lectura)
     time.sleep(0.3)
 
 print("2) Escribiendo una alerta...")
-nube.guardar_alerta("PRUEBA: Alguien cerca de la bici", "ASEGURADA")
+nube.guardar_alerta("PRUEBA: Alguien cerca de la bici", "VIGILANDO")
 nube.actualizar_estado({"ultima_alerta": "PRUEBA: Alguien cerca de la bici"})
 
 print("3) Analizando la foto de ejemplo con la IA...")
@@ -51,7 +52,7 @@ print("   IA:", res.clase, "{:.0f}%".format(res.confianza * 100))
 ok, chico = cv2.imencode(".jpg", cv2.resize(detector.dibujar(img, res), (240, 180)))
 nube.guardar_evento_ia(res, "PRUEBA", "Foto de ejemplo",
                        chico.tobytes() if ok else None)
-nube.guardar_evento("estado", "LIBRE -> ASEGURADA", "telegram", "ASEGURADA")
+nube.guardar_evento("estado", "DESARMADO -> VIGILANDO", "tarjeta", "VIGILANDO")
 nube.actualizar_estado({"ultima_ia": res.clase,
                         "ultima_confianza": round(res.confianza, 3)})
 print("Listo. Abran el dashboard o la consola de Firestore para verlo.")

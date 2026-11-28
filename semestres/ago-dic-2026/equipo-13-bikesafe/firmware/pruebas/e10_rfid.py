@@ -1,5 +1,5 @@
 # ============================================
-# Proyecto:  BikeSafe - Candado inteligente portatil
+# Proyecto:  BikeSafe - Sistema de vigilancia y alarma para bicicletas
 # Archivo:   pruebas/e10_rfid.py
 # Objetivo:  Probar el lector RFID RC522 y leer el codigo (UID) de tus llaveros
 # Equipo:    Oscar Sandoval Cabrera (23240457),
@@ -16,7 +16,7 @@
 #                     alimentado con 3.3 V (NUNCA 5 V).
 #   Al acercar un llavero:  "UID: A1B2C3D4"
 #
-# COPIA ese codigo en config.py, dentro de TARJETAS_AUTORIZADAS.
+# COPIA ese codigo en config.py, dentro de TARJETAS_DUENO.
 
 import time
 from mfrc522 import MFRC522

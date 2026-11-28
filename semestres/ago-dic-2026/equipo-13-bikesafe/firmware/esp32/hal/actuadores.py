@@ -1,8 +1,9 @@
 # ============================================
-# Proyecto:  BikeSafe - Candado inteligente portatil
+# Proyecto:  BikeSafe - Sistema de vigilancia y alarma para bicicletas
 # Archivo:   hal/actuadores.py
-# Objetivo:  Una clase por cada actuador (servo del cerrojo, buzzer,
-#            LED RGB de estado) y el enlace UART con la placa de la camara
+# Objetivo:  Una clase por cada actuador (servo del obturador de la
+#            camara, buzzer, LED RGB de estado) y el enlace UART con la
+#            placa de la camara
 # Equipo:    Oscar Sandoval Cabrera (23240457),
 #            Diego Josue Talamantes Santiago (23240355)
 # Materia:   Sistemas Programables - ISC TecNM Leon
@@ -10,9 +11,11 @@
 # ============================================
 #
 # Los 3 actuadores del proyecto:
-#   1. Cerrojo  -> servo SG90 que mueve el pasador del candado
-#   2. Zumbador -> buzzer (activo o pasivo) para pitidos y sirena
-#   3. Luz      -> LED RGB que cambia de color segun el estado
+#   1. Obturador -> servo SG90 con una tapita que CUBRE la camara cuando
+#                   el dueno esta presente (privacidad) y la DESCUBRE
+#                   cuando el sistema vigila
+#   2. Zumbador  -> buzzer (activo o pasivo) para pitidos y sirena
+#   3. Luz       -> LED RGB que cambia de color segun el estado
 #                  (si todavia no tienen el RGB, funciona con los
 #                   dos LEDs de antes: verde y rojo)
 
@@ -30,21 +33,27 @@ def _duty(pwm, valor_1023):
 
 
 # ---------------------------------------------------------------
-#  1. CERROJO (servomotor SG90)
+#  1. OBTURADOR DE PRIVACIDAD (servomotor SG90)
 # ---------------------------------------------------------------
-class Cerrojo:
-    """Mueve el pasador que traba el cable.
+class Obturador:
+    """Una tapita pegada al brazo del servo, justo debajo de la ventana
+    de la camara en la tapa de la caja.
+
+      DESARMADO (el dueno esta con su bici) -> TAPADA: la camara no ve
+                                               a nadie (privacidad)
+      VIGILANDO / ALARMA                    -> DESTAPADA: puede tomar
+                                               fotos de quien se acerque
 
     Un servo se controla con pulsos 50 veces por segundo (50 Hz).
     El ANCHO del pulso le dice el angulo:
         0.5 ms -> 0 grados      2.5 ms -> 180 grados
     """
 
-    def __init__(self, pin, angulo_abierto, angulo_cerrado):
+    def __init__(self, pin, angulo_tapado, angulo_destapado):
         self._pwm = PWM(Pin(pin), freq=50)
         _duty(self._pwm, 0)                # 0 = servo relajado
-        self._abierto = angulo_abierto
-        self._cerrado = angulo_cerrado
+        self._tapado = angulo_tapado
+        self._destapado = angulo_destapado
         self.angulo = None                 # ultimo angulo que se mando
 
     def _mover(self, grados):
@@ -52,18 +61,22 @@ class Cerrojo:
         # duty va de 0 a 1023. A 50 Hz cada ciclo dura 20 ms, asi que
         # 0.5 ms = 26 y 2.5 ms = 128.
         _duty(self._pwm, 26 + grados * 102 / 180)
-        time.sleep_ms(600)                 # darle tiempo de llegar
+        time.sleep_ms(500)                 # darle tiempo de llegar
         _duty(self._pwm, 0)                # relajar: no vibra ni gasta pila
         self.angulo = grados
 
-    def cerrar(self):
-        self._mover(self._cerrado)
+    def tapar(self):
+        self._mover(self._tapado)
 
-    def abrir(self):
-        self._mover(self._abierto)
+    def destapar(self):
+        self._mover(self._destapado)
 
-    def a_grados(self, grados):
-        self._mover(grados)
+    @property
+    def tapado(self):
+        return self.angulo == self._tapado
+
+    def texto(self):
+        return "TAPADA" if self.tapado else "DESTAPADA"
 
 
 # ---------------------------------------------------------------
@@ -247,10 +260,10 @@ class EnlaceCamara:
     """Le manda renglones de texto a la Freenove:
 
         FOTO|ROBO|Movimiento continuo      -> toma foto y avisa
-        MSG|Bici asegurada                 -> solo manda mensaje
+        MSG|BikeSafe: VIGILANDO            -> solo manda mensaje
 
     La Freenove contesta "OK|..." o "ERR|..." y tambien manda los
-    botones del bot como "CMD|asegurar".
+    botones del bot como "CMD|armar".
     """
 
     def __init__(self, tx, rx):

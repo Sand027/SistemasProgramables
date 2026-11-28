@@ -4,10 +4,10 @@ El firmware de MicroPython se prueba en Python normal con **módulos de mentira*
 
 | Archivo | Qué prueba | Resultado |
 |---|---|---|
-| `test_esp32.py` | Máquina de estados, reed, IA, firma HMAC, repetición, lazo, inclinación, presencia, Buscar, LED RGB, reinicio | 50 / 50 |
-| `test_cam.py` | Bot (botones, confirmación, extraños), fotos, MQTT con reconexión, alertas sin internet | 17 / 17 |
+| `test_esp32.py` | Máquina de estados, reed, IA, firma HMAC, repetición, lazo, inclinación, presencia, Buscar, LED RGB, reinicio | 65 / 65 |
+| `test_cam.py` | Bot (botones, confirmación, extraños), fotos, MQTT con reconexión, alertas sin internet | 20 / 20 |
 | `test_telegram.py` | Peticiones HTTP a Telegram y lectura de `getUpdates` | OK |
-| `test_e2e.py` | **Punta a punta con un broker MQTT real**: ESP32 ↔ UART ↔ Freenove → broker → servidor con YOLO → resultado firmado → la ESP32 decide; también los comandos del dashboard | 18 / 18 |
+| `test_e2e.py` | **Punta a punta con un broker MQTT real**: ESP32 ↔ UART ↔ Freenove → broker → servidor con YOLO → resultado firmado → la ESP32 decide; también los comandos del dashboard | 19 / 19 |
 
 ```bash
 cd pruebas_pc

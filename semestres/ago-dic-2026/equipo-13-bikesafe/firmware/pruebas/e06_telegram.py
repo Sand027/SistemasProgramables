@@ -1,5 +1,5 @@
 # ============================================
-# Proyecto:  BikeSafe - Candado inteligente portatil
+# Proyecto:  BikeSafe - Sistema de vigilancia y alarma para bicicletas
 # Archivo:   pruebas/e06_telegram.py
 # Objetivo:  Probar que la Freenove puede mandar un mensaje al bot de Telegram (se corre en la FREENOVE)
 # Equipo:    Oscar Sandoval Cabrera (23240457),
